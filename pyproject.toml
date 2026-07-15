@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redcell"
+version = "0.1.0"
+description = "An OWASP LLM Top 10 vulnerability scanner for LLM apps and agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Vaibhav" }]
+keywords = [
+    "llm-security", "ai-security", "prompt-injection", "owasp",
+    "red-teaming", "mcp", "agent-security",
+]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Enables the optional LLM-as-judge detector.
+judge = ["groq>=0.11"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+redcell = "redcell.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/yourname/redcell"
+Issues = "https://github.com/yourname/redcell/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["redcell*"]
