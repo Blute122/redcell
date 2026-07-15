@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 import typer
@@ -17,7 +18,7 @@ from . import __version__
 from .engine import run_scan, select_probes
 from .probes import all_probes
 from .report import print_console, to_json, to_markdown
-from .targets import MockVulnerableTarget, OpenAICompatTarget
+from .targets import MCPTarget, MockVulnerableTarget, OpenAICompatTarget
 
 app = typer.Typer(add_completion=False, help="RedCell - OWASP LLM Top 10 scanner.")
 console = Console()
@@ -34,6 +35,11 @@ def scan(
         None, "--system-prompt",
         help="System prompt you control; a canary is planted for leak probes.",
     ),
+    mcp_command: str = typer.Option(
+        None, "--mcp-command",
+        help="Launch and scan an MCP server, e.g. --mcp-command 'python server.py'. "
+             "Runs the agent/tool probes (LLM06) live against its tools.",
+    ),
     demo: bool = typer.Option(
         False, "--demo", help="Scan the built-in vulnerable mock (no keys/network)."
     ),
@@ -43,12 +49,22 @@ def scan(
     include_agent: bool = typer.Option(
         False, "--include-agent", help="Also run agent-only probes (LLM06)."
     ),
+    active: bool = typer.Option(
+        False, "--active",
+        help="Actively INVOKE the dangerous tools LLM06 flags, to confirm they "
+             "execute unauthenticated. Has side effects - authorised/disposable "
+             "targets only. Default is passive (flag without invoking).",
+    ),
     output: Path = typer.Option(None, "--output", "-o", help="Write report to a file."),
     fmt: str = typer.Option("md", "--format", "-f", help="Output format: md or json."),
 ) -> None:
     """Run a scan against a target (or the demo mock)."""
     if demo:
         target = MockVulnerableTarget()
+    elif mcp_command:
+        target = MCPTarget(command=shlex.split(mcp_command))
+        # An MCP server is a tool target: the agent probes are the point.
+        include_agent = True
     elif target_url and model:
         target = OpenAICompatTarget(
             base_url=target_url, model=model, api_key=api_key,
@@ -56,7 +72,7 @@ def scan(
         )
     else:
         console.print(
-            "[red]Provide --demo, or both --target-url and --model.[/]"
+            "[red]Provide --demo, --mcp-command, or both --target-url and --model.[/]"
         )
         raise typer.Exit(code=2)
 
@@ -65,8 +81,13 @@ def scan(
         console.print("[yellow]No probes matched your filter.[/]")
         raise typer.Exit(code=1)
 
-    with console.status("Running probes..."):
-        result = run_scan(target, probes)
+    try:
+        with console.status("Running probes..."):
+            result = run_scan(target, probes, active=active)
+    finally:
+        close = getattr(target, "close", None)
+        if callable(close):
+            close()
 
     print_console(result, console)
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .models import ProbeResult, ScanResult, Severity, Verdict
+from .models import Attack, ProbeResult, ScanResult, Severity, Verdict
 from .probes import all_probes
 from .probes.base import Probe
-from .targets.base import Target
+from .targets.base import AgentTarget, Target
 
 ProgressCb = Callable[[Probe, list[ProbeResult]], None]
 
@@ -38,26 +38,27 @@ def run_scan(
     target: Target,
     probes: list[Probe] | None = None,
     on_probe_done: ProgressCb | None = None,
+    active: bool = False,
 ) -> ScanResult:
+    """Run the selected probes against a target.
+
+    `active` opts agent probes into actively invoking the dangerous tools they
+    find (confirming exploitability) instead of only flagging them. It is
+    off by default so a plain scan never triggers destructive tool calls.
+    """
     if probes is None:
         probes = select_probes()
 
+    is_agent = isinstance(target, AgentTarget)
     scan = ScanResult(target_name=target.name)
     for probe in probes:
-        if probe.requires_agent:
+        # Opt agent probes into active mode; passive is the safe default.
+        if hasattr(probe, "active"):
+            probe.active = active
+        reason = _skip_reason(probe, target, is_agent)
+        if reason is not None:
             # Recorded as skipped so the report is explicit about coverage.
-            skipped = [
-                ProbeResult(
-                    probe_id=probe.id,
-                    probe_name=probe.name,
-                    category=probe.category,
-                    attack=a,
-                    verdict=Verdict.SKIPPED,
-                    severity=Severity.INFO,
-                    notes="requires an agent/tool-using target",
-                )
-                for a in probe.attacks()
-            ]
+            skipped = [_skipped(probe, a, reason) for a in probe.attacks()]
             scan.results.extend(skipped)
             if on_probe_done:
                 on_probe_done(probe, skipped)
@@ -68,3 +69,24 @@ def run_scan(
         if on_probe_done:
             on_probe_done(probe, results)
     return scan
+
+
+def _skip_reason(probe: Probe, target: Target, is_agent: bool) -> str | None:
+    """Why (if at all) a probe cannot run against this target."""
+    if probe.requires_agent and not is_agent:
+        return "requires an agent/tool-using target"
+    if not probe.requires_agent and not target.chat_capable:
+        return "target is not chat-capable (no prompt interface)"
+    return None
+
+
+def _skipped(probe: Probe, attack: Attack, reason: str) -> ProbeResult:
+    return ProbeResult(
+        probe_id=probe.id,
+        probe_name=probe.name,
+        category=probe.category,
+        attack=attack,
+        verdict=Verdict.SKIPPED,
+        severity=Severity.INFO,
+        notes=reason,
+    )

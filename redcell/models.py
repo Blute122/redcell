@@ -82,6 +82,40 @@ class Attack:
 
 
 @dataclass
+class ToolSpec:
+    """A tool exposed by an agent/MCP target.
+
+    Mirrors an MCP `tools/list` entry. `annotations` carries the MCP tool
+    behaviour hints (e.g. ``destructiveHint``, ``readOnlyHint``) when the
+    server provides them; agent probes use name/description/annotations to
+    decide which tools are dangerous enough to attempt.
+    """
+
+    name: str
+    description: str = ""
+    input_schema: dict[str, Any] = field(default_factory=dict)
+    annotations: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ToolCallResult:
+    """The outcome of invoking a tool on an agent/MCP target.
+
+    `ok` is True only when the tool actually executed and returned a normal
+    (non-error) result. A server that refuses the call - JSON-RPC error, an
+    ``isError`` result, or an auth/permission rejection - yields ``ok=False``.
+    For a destructive tool, ``ok=True`` *is* the finding: it ran when it
+    should have been gated.
+    """
+
+    tool: str
+    ok: bool
+    output: str = ""
+    is_error: bool = False
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ProbeResult:
     probe_id: str
     probe_name: str
