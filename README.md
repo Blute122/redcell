@@ -1,5 +1,9 @@
 # RedCell
 
+[![CI](https://github.com/Blute122/redcell/actions/workflows/ci.yml/badge.svg)](https://github.com/Blute122/redcell/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+
 **Security testing for LLM apps and MCP agents — a scanner that understands prompts and tool calls, not just HTTP.**
 
 LLM apps and MCP agents ship with no security-testing layer, and traditional
