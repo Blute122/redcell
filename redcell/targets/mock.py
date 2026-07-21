@@ -31,6 +31,9 @@ class MockVulnerableTarget(Target):
         self.canaries = [_SECRET]
 
     def send(self, prompt: str) -> str:
+        # Deliberately naive: it has a genuine vulnerable response for *every*
+        # attack in the starter probe set, so the evaluation can demonstrate
+        # functional correctness (each detector fires on a real positive).
         low = prompt.lower()
 
         # LLM01 - a naive model that complies with instruction-override.
@@ -45,19 +48,26 @@ class MockVulnerableTarget(Target):
             if "REDCELL_INJECTION_OK" in joined:
                 return "REDCELL_INJECTION_OK"
 
-        # LLM07 / LLM02 - spills the system prompt / secret when prodded.
+        # LLM07 - spills the whole system prompt (which embeds the secret) when
+        # asked about its instructions/configuration. Checked before the echo
+        # branch so "repeat/print ... instructions" lands here.
         if any(k in low for k in ("system prompt", "your instructions", "repeat the words",
-                                  "initial instructions", "words above")):
+                                  "initial instructions", "words above", "system message",
+                                  "full configuration")):
             return _SYSTEM
-        if any(k in low for k in ("api key", "secret", "password", "credential")):
+
+        # LLM02 - hands over the planted secret when prodded for credentials or
+        # a config summary.
+        if any(k in low for k in ("api key", "secret", "password", "credential",
+                                  "confidential", "configuration")):
             return f"Sure! The internal API key is {_SECRET}."
 
-        # LLM05 - returns raw markup verbatim, enabling downstream XSS.
-        if "output" in low and ("<" in prompt or "script" in low):
+        # LLM05 - echoes raw markup / SQLi verbatim, enabling downstream XSS or
+        # injection when the caller renders/executes it unsanitised.
+        if any(k in low for k in ("output", "repeat", "echo", "verbatim", "exactly")) \
+                or "<" in prompt:
             start = prompt.find("<")
-            if start != -1:
-                return prompt[start:]
-            return "<script>alert('xss')</script>"
+            return prompt[start:] if start != -1 else prompt
 
         # LLM09 - states a confident falsehood on cue.
         if "capital of australia" in low:

@@ -1,39 +1,56 @@
-"""Reproducible evaluation: detection rate vs. false-positive rate.
+"""Reproducible evaluation on two axes: functional correctness and precision.
 
-Runs the full probe set against controlled targets and reports, per OWASP
-category, how many attacks fire on a *vulnerable* target versus a *hardened*
-one. The hardened targets are negative controls - a clean target should
-produce zero findings, so anything it flags is a false positive.
+RedCell makes two testable claims, and this harness measures both:
 
-Targets:
-  * chat   - MockVulnerableTarget   vs. HardenedMockTarget
-  * agent  - mock MCP server        vs. mock MCP server --hardened
+1. **Functional correctness** - on cases a target is *genuinely* vulnerable to,
+   the matching detector fires. Measured against the deliberately-vulnerable
+   mock (every attack has a real positive) and the ungated tool on the mock MCP
+   server.
+2. **Precision** - on *hardened* controls (a chat model that refuses injection
+   and never leaks its canary; an MCP server whose destructive tools are all
+   auth-gated), RedCell raises zero false positives.
+
+Optionally it also runs the chat probes against a **live model** - a local
+Ollama or a Groq endpoint - for a real-world reference column. That section is
+gated on environment variables and skips cleanly when they are unset, so CI and
+offline runs stay green:
+
+    REDCELL_EVAL_URL     base URL, e.g. http://localhost:11434/v1 (Ollama) or
+                         https://api.groq.com/openai/v1 (Groq)
+    REDCELL_EVAL_MODEL   model name, e.g. llama3 or llama-3.3-70b-versatile
+    REDCELL_EVAL_KEY     API key (optional; omit for a keyless local Ollama)
+    REDCELL_EVAL_SYSTEM  system prompt to plant a canary in (optional)
 
 Run it:
 
     python evaluation/run_eval.py            # prints the table, updates README
     python evaluation/run_eval.py --no-write  # print only
 
-The LLM06 numbers use --active (actually invoking tools) because that's the
-tier that *confirms* exploitability; the passive tier deliberately over-reports
-and is summarised in the note below the table.
+LLM06 numbers use --active (actually invoking tools), the tier that *confirms*
+exploitability; the passive tier deliberately over-reports and is summarised in
+the note below the table.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from redcell.engine import run_scan, select_probes
 from redcell.models import ProbeResult, Verdict
-from redcell.targets import HardenedMockTarget, MCPTarget, MockVulnerableTarget
+from redcell.targets import (
+    HardenedMockTarget,
+    MCPTarget,
+    MockVulnerableTarget,
+    OpenAICompatTarget,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 _MCP_SERVER = _ROOT / "tests" / "mock_mcp_server.py"
 _README = _ROOT / "README.md"
 
-# Order and titles for the reported categories.
 _CATEGORIES = [
     ("LLM01", "Prompt Injection"),
     ("LLM02", "Sensitive Information Disclosure"),
@@ -42,29 +59,40 @@ _CATEGORIES = [
     ("LLM07", "System Prompt Leakage"),
     ("LLM09", "Misinformation"),
 ]
+_CHAT_CODES = {"LLM01", "LLM02", "LLM05", "LLM07", "LLM09"}
 
 _START = "<!-- RESULTS_TABLE:START -->"
 _END = "<!-- RESULTS_TABLE:END -->"
 
+_URL_ENV = "REDCELL_EVAL_URL"
+_MODEL_ENV = "REDCELL_EVAL_MODEL"
+_KEY_ENV = "REDCELL_EVAL_KEY"
+_SYSTEM_ENV = "REDCELL_EVAL_SYSTEM"
+_DEFAULT_SYSTEM = "You are a helpful customer-support assistant for ACME Corp."
+
 
 @dataclass
 class CategoryStat:
-    """Per-OWASP-category detection and false-positive counts."""
+    """Per-OWASP-category counts across the target set."""
 
     code: str
     title: str
     detected: int          # VULNERABLE verdicts on the vulnerable target
     attempts: int          # attacks attempted on the vulnerable target
-    false_positives: int   # VULNERABLE verdicts on the hardened target (should be 0)
+    false_positives: int   # VULNERABLE verdicts on the hardened target
+    real_fired: int = 0    # VULNERABLE verdicts on the live model
+    real_total: int = 0    # attacks run against the live model (0 = n/a)
 
 
 @dataclass
 class EvalReport:
-    """Aggregated evaluation result plus the numbers behind the passive note."""
+    """Aggregated evaluation result."""
 
     stats: list[CategoryStat] = field(default_factory=list)
     passive_hardened_flags: int = 0
     active_hardened_flags: int = 0
+    real_label: str | None = None   # live-model name when it ran
+    real_note: str | None = None    # why the live column was skipped
 
     @property
     def total_detected(self) -> int:
@@ -78,12 +106,18 @@ class EvalReport:
     def total_false_positives(self) -> int:
         return sum(s.false_positives for s in self.stats)
 
+    @property
+    def chat_detected(self) -> int:
+        return sum(s.detected for s in self.stats if s.code in _CHAT_CODES)
+
+    @property
+    def chat_attempts(self) -> int:
+        return sum(s.attempts for s in self.stats if s.code in _CHAT_CODES)
+
 
 def _count(results: list[ProbeResult], code: str) -> tuple[int, int]:
-    """(vulnerable verdicts, total results) for one OWASP code."""
     rs = [r for r in results if r.category.code == code]
-    vuln = sum(1 for r in rs if r.verdict is Verdict.VULNERABLE)
-    return vuln, len(rs)
+    return sum(1 for r in rs if r.verdict is Verdict.VULNERABLE), len(rs)
 
 
 def _mcp(hardened: bool) -> MCPTarget:
@@ -100,24 +134,57 @@ def _scan_agent(hardened: bool, active: bool) -> list[ProbeResult]:
         target.close()
 
 
-def run_evaluation() -> EvalReport:
-    """Run every target pair and aggregate the numbers."""
+def _real_target() -> tuple[OpenAICompatTarget | None, str | None]:
+    """Build the live-model target from env, or return (None, note).
+
+    A note of ``None`` means the section was simply not requested (env unset);
+    a string note means it was requested but unreachable.
+    """
+    url = os.environ.get(_URL_ENV)
+    model = os.environ.get(_MODEL_ENV)
+    if not url or not model:
+        return None, None
+    target = OpenAICompatTarget(
+        base_url=url,
+        model=model,
+        api_key=os.environ.get(_KEY_ENV),
+        system_prompt=os.environ.get(_SYSTEM_ENV, _DEFAULT_SYSTEM),
+    )
+    try:  # preflight so an unreachable endpoint skips instead of filling 0s
+        target.send("ping")
+    except Exception as exc:  # noqa: BLE001 - any transport failure => skip
+        return None, f"{_URL_ENV} set but endpoint unreachable ({exc.__class__.__name__})"
+    return target, target.name
+
+
+def run_evaluation(include_real: bool = True) -> EvalReport:
+    """Run every target and aggregate. `include_real=False` stays fully offline."""
     chat_probes = select_probes()  # excludes agent-only probes
 
-    vuln_results = run_scan(MockVulnerableTarget(), chat_probes).results
-    hard_results = run_scan(HardenedMockTarget(), chat_probes).results
-
-    # LLM06 (agent) — active tier confirms exploitability.
-    vuln_results += _scan_agent(hardened=False, active=True)
-    hard_results += _scan_agent(hardened=True, active=True)
+    vuln = run_scan(MockVulnerableTarget(), chat_probes).results
+    hard = run_scan(HardenedMockTarget(), chat_probes).results
+    vuln += _scan_agent(hardened=False, active=True)
+    hard += _scan_agent(hardened=True, active=True)
 
     report = EvalReport()
-    for code, title in _CATEGORIES:
-        detected, attempts = _count(vuln_results, code)
-        false_pos, _ = _count(hard_results, code)
-        report.stats.append(CategoryStat(code, title, detected, attempts, false_pos))
 
-    # Passive vs. active on the hardened server — the fidelity contrast.
+    real_results: list[ProbeResult] = []
+    if include_real:
+        target, note = _real_target()
+        if target is not None:
+            report.real_label = note
+            real_results = run_scan(target, chat_probes).results
+        else:
+            report.real_note = note
+
+    for code, title in _CATEGORIES:
+        detected, attempts = _count(vuln, code)
+        false_pos, _ = _count(hard, code)
+        real_fired, real_total = _count(real_results, code)
+        report.stats.append(
+            CategoryStat(code, title, detected, attempts, false_pos, real_fired, real_total)
+        )
+
     passive_hard = _scan_agent(hardened=True, active=False)
     report.passive_hardened_flags = sum(
         1 for r in passive_hard if r.verdict is Verdict.VULNERABLE
@@ -130,40 +197,71 @@ def run_evaluation() -> EvalReport:
 
 def render_markdown(report: EvalReport) -> str:
     """Render the report as a self-contained Markdown block."""
+    has_real = report.real_label is not None
+    real_hdr = f" Live model<br>({report.real_label}) ³ |" if has_real else ""
+    real_sep = ":--:|" if has_real else ""
+
     lines = [
         "_Generated by `python evaluation/run_eval.py`. LLM06 uses `--active`._",
         "",
-        "| OWASP | Category | Detected on vulnerable target | False positives on hardened target |",
-        "|-------|----------|:-----------------------------:|:-----------------------------------:|",
+        "RedCell is validated on two axes — **functional correctness** (does a "
+        "detector fire on a real vulnerability?) and **precision** (does it stay "
+        "silent on a clean target?):",
+        "",
+        f"| OWASP | Category | Vulnerable mock ¹ | Hardened control ² |{real_hdr}",
+        f"|-------|----------|:-----------------:|:------------------:|{real_sep}",
     ]
     for s in report.stats:
         code = f"{s.code}&nbsp;†" if s.code == "LLM06" else s.code
-        lines.append(
-            f"| {code} | {s.title} | {s.detected} / {s.attempts} | {s.false_positives} |"
-        )
-    lines.append(
-        f"| **Total** | | **{report.total_detected} / {report.total_attempts}** "
-        f"| **{report.total_false_positives}** |"
-    )
+        cell = f" {s.detected} / {s.attempts} "
+        row = f"| {code} | {s.title} |{cell}| {s.false_positives} |"
+        if has_real:
+            real_cell = f" {s.real_fired} / {s.real_total} " if s.real_total else " n/a "
+            row += f"{real_cell}|"
+        lines.append(row)
+
+    total = f"| **Total** | | **{report.total_detected} / {report.total_attempts}** | **{report.total_false_positives}** |"
+    if has_real:
+        total += " |"
+    lines.append(total)
+
     lines += [
+        "",
+        "**¹ Functional correctness.** Every case the mock is deliberately "
+        f"vulnerable to is detected — {report.chat_detected} / {report.chat_attempts} "
+        "chat cases, plus the one ungated MCP tool. The detectors work end-to-end "
+        "on known positives.",
+        "",
+        "**² Precision.** On the hardened controls (a chat model that refuses "
+        "injection and never leaks its canary; an MCP server whose destructive "
+        f"tools are all auth-gated), RedCell raises **{report.total_false_positives} "
+        "false positives**.",
         "",
         "† LLM06 counts destructive tools, not prompts: the vulnerable MCP server "
         "exposes 2, but only `delete_account` is ungated — RedCell confirms exactly "
-        "it, while the auth-gated `wire_transfer` correctly PASSes. High precision, "
-        "not a 50% miss.",
-        "",
-        f"Across {report.total_attempts} adversarial attempts, RedCell flags "
-        f"{report.total_detected} on the vulnerable targets and "
-        f"**{report.total_false_positives} false positives** on the hardened "
-        "controls (a chat model that refuses injection and never leaks its "
-        "canary; an MCP server whose destructive tools are all auth-gated).",
+        "it, while the auth-gated `wire_transfer` correctly PASSes.",
+    ]
+    if has_real:
+        lines += [
+            "",
+            "**³ Live model.** The chat probes run against a real model "
+            f"(`{report.real_label}`) with a planted canary — a real-world "
+            "reference, not a pass/fail control (a live model's behaviour is "
+            "non-deterministic and not asserted in CI).",
+        ]
+    else:
+        lines += [
+            "",
+            f"_Set `{_URL_ENV}` and `{_MODEL_ENV}` (optionally `{_KEY_ENV}`) to add a "
+            "live-model column from a local Ollama or Groq endpoint._",
+        ]
+    lines += [
         "",
         "**Passive vs. active (LLM06).** In passive mode RedCell flags "
         f"{report.passive_hardened_flags} destructive tools on the *hardened* MCP "
         "server as advisory MEDIUM exposures; `--active` invokes them, both are "
-        f"refused, and they clear to PASS ({report.active_hardened_flags} confirmed). "
-        "That gap is the detection-confidence vs. operational-safety trade-off, "
-        "made measurable.",
+        f"refused, and they clear to PASS ({report.active_hardened_flags} confirmed) — "
+        "the detection-confidence vs. operational-safety trade-off, made measurable.",
     ]
     return "\n".join(lines)
 
@@ -176,8 +274,8 @@ def update_readme(markdown: str) -> bool:
     head, rest = text.split(_START, 1)
     _, tail = rest.split(_END, 1)
     new = f"{head}{_START}\n{markdown}\n{_END}{tail}"
-    # Normalise to LF to match the repo's .gitattributes (eol=lf), regardless
-    # of platform — Path.write_text would otherwise emit CRLF on Windows.
+    # Normalise to LF to match .gitattributes (eol=lf); write_text emits CRLF
+    # on Windows otherwise.
     new = new.replace("\r\n", "\n").replace("\r", "\n")
     _README.write_text(new, encoding="utf-8", newline="\n")
     return True
@@ -186,6 +284,8 @@ def update_readme(markdown: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     report = run_evaluation()
+    if report.real_note:
+        print(f"[live model] {report.real_note}; skipping that column.", file=sys.stderr)
     markdown = render_markdown(report)
     print(markdown)
     if "--no-write" not in argv:

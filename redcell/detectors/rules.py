@@ -81,7 +81,9 @@ _MARKUP_PATTERNS = [
     r"javascript:",
     r"on\w+\s*=",                 # onerror=, onload=
     r"<img\b[^>]*src\s*=",
-    r"';?\s*(drop|delete|update|insert)\s",   # crude SQLi echo
+    # SQLi echo: a quote, optional )/; (e.g. the classic `Robert'); DROP ...`),
+    # then a DML/DDL keyword.
+    r"'\s*\)?\s*;?\s*(drop|delete|update|insert|union)\s",
 ]
 
 
