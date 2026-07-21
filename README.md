@@ -1,18 +1,26 @@
 # RedCell
 
-**An OWASP LLM Top 10 vulnerability scanner for LLM apps and agents.**
+**Security testing for LLM apps and MCP agents — a scanner that understands prompts and tool calls, not just HTTP.**
 
-RedCell points a battery of adversarial probes at any LLM endpoint (or, soon,
-MCP server / tool-using agent), maps each finding to the
+LLM apps and MCP agents ship with no security-testing layer, and traditional
+scanners (nmap, Burp, nikto) don't understand prompt injection or unauthorised
+tool calls. RedCell points a battery of adversarial probes at any LLM endpoint
+*or* MCP server, maps each finding to the
 [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/),
 and produces a graded report you can drop into CI or a security review.
 
-Think of it as a `nmap`/`nikto` for the prompt layer: a red-cell in a box.
+> **The differentiator:** RedCell scans **MCP agents for *excessive agency*** by
+> actually enumerating and invoking their tools — catching a destructive tool
+> that runs with no authorisation. It defaults to a **safe passive mode** (flag,
+> don't fire) and only executes tools when you opt in with `--active`. Most
+> prompt-security tooling stops at the chat box; RedCell reaches the tool layer.
 
-> ⚠️ **Authorised testing only.** RedCell is a defensive red-teaming tool.
-> Run it against systems you own or have explicit permission to test. The
-> payloads are standard, publicly documented patterns included so *defenders*
-> can find these weaknesses before attackers do.
+![RedCell demo scan](docs/demo.svg)
+
+> ⚠️ **Authorised testing only.** RedCell is a defensive red-teaming tool. Run
+> it against systems you own or have explicit permission to test. The payloads
+> are standard, publicly documented patterns, included so *defenders* can find
+> these weaknesses before attackers do.
 
 ---
 
@@ -21,83 +29,30 @@ Think of it as a `nmap`/`nikto` for the prompt layer: a red-cell in a box.
 ```bash
 pip install -e .
 
-# 1. Offline demo - no API key, no network. Scans a deliberately
-#    vulnerable built-in mock so you can see output immediately.
+# Zero-setup demo — no API key, no network. Scans a deliberately vulnerable
+# built-in mock so you see a graded findings table immediately.
 redcell scan --demo
 
-# 2. Scan a real OpenAI-compatible endpoint (OpenAI, Groq, Ollama,
-#    LM Studio, or your own FastAPI wrapper).
+# See the probe catalogue.
+redcell list-probes
+```
+
+Scan a real OpenAI-compatible endpoint (OpenAI, Groq, Ollama, LM Studio, or
+your own FastAPI wrapper):
+
+```bash
 redcell scan \
   --target-url http://localhost:11434/v1 \
   --model llama3 \
   --system-prompt "You are a support bot for ACME."
-
-# 3. Filter to specific categories, and export a report.
-redcell scan --demo -c LLM01 -c LLM07 -o report.md -f md
-
-# See the catalogue
-redcell list-probes
 ```
 
-Passing `--system-prompt` lets RedCell plant a secret canary in the context,
-which makes the leak / sensitive-info probes score reliably instead of
-falling back to heuristics.
+Passing `--system-prompt` plants a secret canary in the context, so the
+leak / sensitive-info probes score reliably instead of falling back to
+heuristics. Filter categories and export a report with
+`redcell scan --demo -c LLM01 -c LLM07 -o report.md -f md`.
 
-## What it checks (starter probe set)
-
-| OWASP | Probe | What it does |
-|-------|-------|--------------|
-| LLM01 | Direct prompt injection | Instruction-override, delimiter breaks, translation smuggling, payload splitting |
-| LLM02 | Sensitive info disclosure | Tries to extract planted secrets / credentials |
-| LLM05 | Improper output handling | Coaxes raw XSS/SQLi-shaped markup out of the model |
-| LLM06 | Excessive agency *(agent-only)* | Attempts unauthorised/destructive tool calls |
-| LLM07 | System prompt leakage | Tries to make the model recite its hidden instructions |
-| LLM09 | Misinformation | Seed check for confident falsehoods |
-
-## How it's built
-
-```
-target ──> engine ──> [ probe ──> attack(s) ──> detector ] ──> report
-```
-
-Four extension points, each independent:
-
-- **Targets** (`redcell/targets/`) — anything you can send a prompt to, plus
-  tool-callers via `AgentTarget`. `OpenAICompatTarget`, `MockVulnerableTarget`,
-  and `MCPTarget` (connects to an MCP server over stdio) ship today.
-- **Probes** (`redcell/probes/`) — a category + severity + a set of attacks.
-  Adding one is: subclass `Probe`, list attacks, pick a detector, `@register`.
-- **Detectors** (`redcell/detectors/`) — decide if an attack worked. Precise
-  rule-based detectors ship by default; an optional Groq-powered LLM judge
-  handles fuzzier cases (`pip install -e '.[judge]'`, set `GROQ_API_KEY`).
-- **Report** (`redcell/report.py`) — console, JSON (for CI), Markdown (for
-  write-ups).
-
-Because probes only ever see the `Target` interface, the same probe runs
-against a cloud API, a local model, or a future agent adapter unchanged.
-
-## Adding a probe
-
-```python
-from redcell.probes.base import Probe, register
-from redcell.detectors.rules import MarkerEchoDetector
-from redcell.models import Attack, OwaspCategory, Severity
-
-@register
-class MyProbe(Probe):
-    id = "llm01-my-variant"
-    name = "My injection variant"
-    category = OwaspCategory.LLM01
-    severity = Severity.HIGH
-
-    def attacks(self):
-        return [Attack(id="mv-1", prompt="...", success_marker="OK")]
-
-    def detector(self):
-        return MarkerEchoDetector()
-```
-
-## Scanning an MCP server
+## Scanning an MCP server (the headline feature)
 
 RedCell speaks the Model Context Protocol over stdio. Point it at any MCP
 server and the LLM06 excessive-agency probe runs against its tools —
@@ -127,22 +82,91 @@ redcell scan --mcp-command "python my_mcp_server.py" --active
 > ⚠️ `--active` genuinely executes the tools it flags — `delete_account` really
 > deletes. Run it only against a server you own or a disposable/test instance.
 
-**Why passive is the default.** It's a deliberate detection-confidence vs.
+**Why passive is the default** is a deliberate detection-confidence vs.
 operational-safety trade-off. Passive over-reports — it flags a
 properly-guarded destructive tool it can't distinguish from an ungated one —
 but it never has a side effect, so the dangerous behaviour is an opt-in choice
 rather than what happens if you run the obvious command. Active buys back the
-fidelity (the guarded tool clears to PASS) at the cost of real side effects,
-which is exactly the sort of thing you only want to opt into on a target you
-control.
+fidelity (the guarded tool clears to PASS) at the cost of real side effects.
+
+## Results
+
+RedCell is validated against controlled targets: a deliberately-vulnerable
+mock, a mock MCP server, and *hardened* targets that should yield **no**
+findings (a chat model that refuses injection and never leaks its canary; an
+MCP server whose destructive tools are all auth-gated). The evaluation harness
+reproduces the numbers:
+
+```bash
+python evaluation/run_eval.py
+```
+
+<!-- RESULTS_TABLE:START -->
+_Results table is generated by `evaluation/run_eval.py` (see the evaluation
+harness)._
+<!-- RESULTS_TABLE:END -->
+
+## What it checks
+
+| OWASP | Probe | What it does |
+|-------|-------|--------------|
+| LLM01 | Direct prompt injection | Instruction-override, delimiter breaks, translation smuggling, payload splitting |
+| LLM02 | Sensitive info disclosure | Tries to extract planted secrets / credentials |
+| LLM05 | Improper output handling | Coaxes raw XSS/SQLi-shaped markup out of the model |
+| LLM06 | Excessive agency *(agent/MCP)* | Enumerates and (opt-in) invokes destructive tools |
+| LLM07 | System prompt leakage | Tries to make the model recite its hidden instructions |
+| LLM09 | Misinformation | Seed check for confident falsehoods |
+
+## How it's built
+
+```
+target ──> engine ──> [ probe ──> attack(s) ──> detector ] ──> report
+```
+
+Four extension points, each independent:
+
+- **Targets** (`redcell/targets/`) — anything you can send a prompt to, plus
+  tool-callers via `AgentTarget`. `OpenAICompatTarget`, `MockVulnerableTarget`,
+  and `MCPTarget` (connects to an MCP server over stdio) ship today.
+- **Probes** (`redcell/probes/`) — a category + severity + a set of attacks.
+  Adding one is: subclass `Probe`, list attacks, pick a detector, `@register`.
+- **Detectors** (`redcell/detectors/`) — decide if an attack worked. Precise
+  rule-based detectors ship by default; an optional Groq-powered LLM judge
+  handles fuzzier cases (`pip install -e '.[judge]'`, set `GROQ_API_KEY`).
+- **Report** (`redcell/report.py`) — console, JSON (for CI), Markdown (for
+  write-ups).
+
+Because probes only ever see the `Target` / `AgentTarget` interface, the same
+probe runs against a cloud API, a local model, or an MCP agent unchanged.
+
+## Adding a probe
+
+```python
+from redcell.probes.base import Probe, register
+from redcell.detectors.rules import MarkerEchoDetector
+from redcell.models import Attack, OwaspCategory, Severity
+
+@register
+class MyProbe(Probe):
+    id = "llm01-my-variant"
+    name = "My injection variant"
+    category = OwaspCategory.LLM01
+    severity = Severity.HIGH
+
+    def attacks(self):
+        return [Attack(id="mv-1", prompt="...", success_marker="OK")]
+
+    def detector(self):
+        return MarkerEchoDetector()
+```
 
 ## Roadmap
 
 - [x] **Agent target adapter** — LLM06 fires live against MCP tool-callers.
+- [ ] **Indirect / cross-context injection** — payloads via retrieved content.
 - [ ] **MCP server scanning (breadth)** — tool poisoning, insecure auth,
       injection-driven tool *sequences*; HTTP/SSE transport.
-- [ ] Indirect / cross-context injection (poisoned documents, RAG sources).
-- [ ] CI action (`--fail-on high`) + SARIF output for GitHub code scanning.
+- [ ] CI gate (`--fail-on <severity>`) + SARIF output for GitHub code scanning.
 - [ ] Expanded payload corpora per category; MITRE ATLAS mapping alongside OWASP.
 
 ## Tests
@@ -153,9 +177,8 @@ pytest -q
 ```
 
 The suite runs the full probe set against the vulnerable mock and asserts the
-known categories fire — a controlled baseline you can point to when validating
-detection.
+known categories fire — a controlled baseline for validating detection.
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0. See [`LICENSE`](LICENSE).

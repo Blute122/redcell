@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="SFMono-Regular,Consolas,Menlo,monospace" font-size="13">
+  <rect width="760" height="300" rx="8" fill="#1e1e2e"/>
+  <rect width="760" height="28" rx="8" fill="#313244"/>
+  <rect y="14" width="760" height="14" fill="#313244"/>
+  <circle cx="18" cy="14" r="5" fill="#f38ba8"/>
+  <circle cx="36" cy="14" r="5" fill="#f9e2af"/>
+  <circle cx="54" cy="14" r="5" fill="#a6e3a1"/>
+  <text x="380" y="18" fill="#a6adc8" text-anchor="middle" font-size="11">redcell — demo scan</text>
+  <text xml:space="preserve" fill="#cdd6f4">
+    <tspan x="16" y="56"><tspan fill="#a6e3a1">$</tspan> redcell scan --demo</tspan>
+    <tspan x="16" y="82" fill="#89b4fa">──── RedCell scan · mock-vulnerable-llm ────</tspan>
+    <tspan x="16" y="104">Risk grade: <tspan fill="#f38ba8">F</tspan>   Findings: 6   Worst: <tspan fill="#f38ba8">critical</tspan></tspan>
+    <tspan x="16" y="130" fill="#a6adc8">OWASP  Probe                       Verdict     Sev</tspan>
+    <tspan x="16" y="150">LLM01  Direct prompt injection      <tspan fill="#f38ba8">vulnerable</tspan>  high</tspan>
+    <tspan x="16" y="170">LLM02  Sensitive info disclosure    <tspan fill="#f38ba8">vulnerable</tspan>  crit</tspan>
+    <tspan x="16" y="190">LLM05  Improper output handling     <tspan fill="#f38ba8">vulnerable</tspan>  high</tspan>
+    <tspan x="16" y="210">LLM07  System prompt leakage        <tspan fill="#f38ba8">vulnerable</tspan>  high</tspan>
+    <tspan x="16" y="230">LLM09  Misinformation               <tspan fill="#f38ba8">vulnerable</tspan>  med</tspan>
+    <tspan x="16" y="262" fill="#6c7086">// placeholder — regenerate a real capture per docs/README.md</tspan>
+  </text>
+</svg>
