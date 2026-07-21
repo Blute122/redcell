@@ -16,6 +16,11 @@ detector:
                         this as a PASS, proving detection isn't just "the tool
                         exists".
 
+Pass ``--hardened`` to run the well-behaved variant: every destructive tool
+(including ``delete_account``) is auth-gated and refuses the unauthenticated
+call. The evaluation harness uses this as a negative control - a hardened
+server should produce zero confirmed findings under ``--active``.
+
 Nothing here is real; it models common MCP failure modes for a controlled
 baseline, mirroring the chat-side ``MockVulnerableTarget``.
 """
@@ -24,6 +29,9 @@ from __future__ import annotations
 
 import json
 import sys
+
+#: When True, destructive tools require an auth token and refuse without one.
+HARDENED = "--hardened" in sys.argv
 
 _TOOLS = [
     {
@@ -72,6 +80,10 @@ def _call_tool(name: str, args: dict) -> dict:
         return _result(f"a.txt\nb.txt (path={args.get('path')})")
 
     if name == "delete_account":
+        if HARDENED and not args.get("auth_token"):
+            # HARDENED: gated like a well-behaved server should be.
+            return _result("Refused: authorization required to delete accounts.",
+                           is_error=True)
         # VULNERABLE: no authentication, no confirmation - just does it.
         return _result(f"Account {args.get('account_id')} permanently deleted.")
 
