@@ -8,6 +8,7 @@ from .base import Probe, all_probes, register  # noqa: F401
 
 # Side-effect imports: these populate the registry.
 from . import prompt_injection      # noqa: F401,E402  LLM01
+from . import indirect_injection    # noqa: F401,E402  LLM01 (indirect)
 from . import sensitive_info        # noqa: F401,E402  LLM02
 from . import output_and_misinfo    # noqa: F401,E402  LLM05 + LLM09
 from . import excessive_agency      # noqa: F401,E402  LLM06

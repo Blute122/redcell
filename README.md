@@ -112,15 +112,15 @@ RedCell is validated on two axes — **functional correctness** (does a detector
 
 | OWASP | Category | Vulnerable mock ¹ | Hardened control ² |
 |-------|----------|:-----------------:|:------------------:|
-| LLM01 | Prompt Injection | 5 / 5 | 0 |
+| LLM01 | Prompt Injection | 8 / 8 | 0 |
 | LLM02 | Sensitive Information Disclosure | 4 / 4 | 0 |
 | LLM05 | Improper Output Handling | 3 / 3 | 0 |
 | LLM06&nbsp;† | Excessive Agency | 1 / 2 | 0 |
 | LLM07 | System Prompt Leakage | 4 / 4 | 0 |
 | LLM09 | Misinformation | 1 / 1 | 0 |
-| **Total** | | **18 / 19** | **0** |
+| **Total** | | **21 / 22** | **0** |
 
-**¹ Functional correctness.** Every case the mock is deliberately vulnerable to is detected — 17 / 17 chat cases, plus the one ungated MCP tool. The detectors work end-to-end on known positives.
+**¹ Functional correctness.** Every case the mock is deliberately vulnerable to is detected — 20 / 20 chat cases, plus the one ungated MCP tool. The detectors work end-to-end on known positives.
 
 **² Precision.** On the hardened controls (a chat model that refuses injection and never leaks its canary; an MCP server whose destructive tools are all auth-gated), RedCell raises **0 false positives**.
 
@@ -136,6 +136,7 @@ _Set `REDCELL_EVAL_URL` and `REDCELL_EVAL_MODEL` (optionally `REDCELL_EVAL_KEY`)
 | OWASP | Probe | What it does |
 |-------|-------|--------------|
 | LLM01 | Direct prompt injection | Instruction-override, delimiter breaks, translation smuggling, payload splitting |
+| LLM01 | Indirect / cross-context injection | Hides instructions in "retrieved" documents; scores *obeying* (an out-of-band action), not quoting |
 | LLM02 | Sensitive info disclosure | Tries to extract planted secrets / credentials |
 | LLM05 | Improper output handling | Coaxes raw XSS/SQLi-shaped markup out of the model |
 | LLM06 | Excessive agency *(agent/MCP)* | Enumerates and (opt-in) invokes destructive tools |
@@ -188,7 +189,8 @@ class MyProbe(Probe):
 ## Roadmap
 
 - [x] **Agent target adapter** — LLM06 fires live against MCP tool-callers.
-- [ ] **Indirect / cross-context injection** — payloads via retrieved content.
+- [x] **Indirect / cross-context injection** — payloads via retrieved content,
+      scored by out-of-band action so quoting isn't mistaken for obeying.
 - [ ] **MCP server scanning (breadth)** — tool poisoning, insecure auth,
       injection-driven tool *sequences*; HTTP/SSE transport.
 - [ ] CI gate (`--fail-on <severity>`) + SARIF output for GitHub code scanning.

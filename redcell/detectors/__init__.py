@@ -4,12 +4,14 @@ from .rules import (
     Detector,
     MarkerEchoDetector,
     MarkupDetector,
+    OutOfBandActionDetector,
     SystemLeakHeuristicDetector,
 )
 
 __all__ = [
     "Detector",
     "MarkerEchoDetector",
+    "OutOfBandActionDetector",
     "CanaryLeakDetector",
     "SystemLeakHeuristicDetector",
     "MarkupDetector",
