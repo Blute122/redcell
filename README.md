@@ -1,25 +1,49 @@
 # RedCell
 
 [![CI](https://github.com/Blute122/redcell/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Blute122/redcell/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
-**Security testing for LLM apps and MCP agents — a scanner that understands prompts and tool calls, not just HTTP.**
+**A security scanner for LLM applications and tool-using agents.**
 
-LLM apps and MCP agents ship with no security-testing layer, and traditional
-scanners (nmap, Burp, nikto) don't understand prompt injection or unauthorised
-tool calls. RedCell points a battery of adversarial probes at any LLM endpoint
-*or* MCP server, maps each finding to the
+LLM apps ship with no security-testing layer. Traditional scanners don't
+understand prompts, and they understand tool calls even less — a WAF can't tell
+you whether your agent can be talked into deleting an account.
+
+RedCell probes both layers. It runs the same adversarial methodology against
+chat endpoints *and* MCP agents, maps every finding to the
 [OWASP Top 10 for LLM Applications (2025)](https://owasp.org/www-project-top-10-for-large-language-model-applications/),
-and produces a graded report you can drop into CI or a security review.
+and grades the result.
 
-> **The differentiator:** RedCell scans **MCP agents for *excessive agency*** by
-> actually enumerating and invoking their tools — catching a destructive tool
-> that runs with no authorisation. It defaults to a **safe passive mode** (flag,
-> don't fire) and only executes tools when you opt in with `--active`. Most
-> prompt-security tooling stops at the chat box; RedCell reaches the tool layer.
+```bash
+pip install -e .
+redcell scan --demo      # zero setup, no API key, no network
+```
 
-![RedCell demo scan](docs/demo.svg)
+![RedCell scanning the built-in vulnerable target](docs/demo.svg)
+
+## What makes it different
+
+**It tests agents, not just prompts.** Point RedCell at an MCP server and it
+enumerates the server's tools, flags the destructive ones, and — on an
+authorised target — confirms excessive agency by *actually attempting the
+unauthorised call*. A tool call that succeeds when it should have been gated is
+a confirmed finding, not an inference from what the model claimed it would do.
+Passive enumeration is the default; active exploitation is opt-in.
+
+**Its indirect-injection detection can tell obeying from quoting.** When the
+payload arrives inside a document the model is asked to summarise, the naive
+check — did the marker appear in the output? — fires on any model that
+faithfully quotes the document. RedCell's attacks instead carry success signals
+that *cannot* appear in a summary: a computed value, a string transform, a
+closed-domain answer absent from the source. A model only emits them by
+executing the injected instruction.
+
+**The numbers are two claims, not one.** Every genuinely-vulnerable case in the
+test corpus is detected, and hardened controls — a chat target that refuses
+injection, an MCP server whose destructive tools are auth-gated, a summariser
+that quotes a malicious document without obeying it — produce **zero false
+positives**. See [Results](#results).
 
 > ⚠️ **Authorised testing only.** RedCell is a defensive red-teaming tool. Run
 > it against systems you own or have explicit permission to test. The payloads
@@ -31,14 +55,8 @@ and produces a graded report you can drop into CI or a security review.
 ## Quickstart
 
 ```bash
-pip install -e .
-
-# Zero-setup demo — no API key, no network. Scans a deliberately vulnerable
-# built-in mock so you see a graded findings table immediately.
-redcell scan --demo
-
-# See the probe catalogue.
-redcell list-probes
+redcell scan --demo       # scan the built-in vulnerable mock
+redcell list-probes       # see the probe catalogue
 ```
 
 Scan a real OpenAI-compatible endpoint (OpenAI, Groq, Ollama, LM Studio, or
