@@ -74,6 +74,22 @@ leak / sensitive-info probes score reliably instead of falling back to
 heuristics. Filter categories and export a report with
 `redcell scan --demo -c LLM01 -c LLM07 -o report.md -f md`.
 
+## Use it in CI
+
+`--fail-on <severity>` exits non-zero when any finding is at or above the
+threshold, so a pipeline can block on it. It's opt-in: without the flag a scan
+always exits 0, so adding RedCell to a build never breaks it by surprise.
+
+```bash
+redcell scan --demo --fail-on high -o report.json -f json
+```
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Scan completed; nothing at or above the threshold |
+| `1` | At least one finding at or above `--fail-on` |
+| `2` | Usage error (bad target arguments, or an unknown severity) |
+
 ## Scanning an MCP server (the headline feature)
 
 RedCell speaks the Model Context Protocol over stdio. Point it at any MCP
@@ -211,7 +227,8 @@ class MyProbe(Probe):
       scored by out-of-band action so quoting isn't mistaken for obeying.
 - [ ] **MCP server scanning (breadth)** — tool poisoning, insecure auth,
       injection-driven tool *sequences*; HTTP/SSE transport.
-- [ ] CI gate (`--fail-on <severity>`) + SARIF output for GitHub code scanning.
+- [x] **CI gate** — `--fail-on <severity>` blocks a pipeline on findings.
+- [ ] SARIF output for GitHub code scanning.
 - [ ] Expanded payload corpora per category; MITRE ATLAS mapping alongside OWASP.
 
 ## Tests

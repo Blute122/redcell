@@ -96,22 +96,27 @@ class EvalReport:
 
     @property
     def total_detected(self) -> int:
+        """Findings across every category on the vulnerable targets."""
         return sum(s.detected for s in self.stats)
 
     @property
     def total_attempts(self) -> int:
+        """Attacks attempted across every category on the vulnerable targets."""
         return sum(s.attempts for s in self.stats)
 
     @property
     def total_false_positives(self) -> int:
+        """Findings raised against the hardened controls (should be zero)."""
         return sum(s.false_positives for s in self.stats)
 
     @property
     def chat_detected(self) -> int:
+        """Findings in the chat-only categories (excludes agent LLM06)."""
         return sum(s.detected for s in self.stats if s.code in _CHAT_CODES)
 
     @property
     def chat_attempts(self) -> int:
+        """Attacks attempted in the chat-only categories."""
         return sum(s.attempts for s in self.stats if s.code in _CHAT_CODES)
 
 
@@ -282,6 +287,7 @@ def update_readme(markdown: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the evaluation, print the table, and update the README."""
     argv = sys.argv[1:] if argv is None else argv
     report = run_evaluation()
     if report.real_note:

@@ -26,6 +26,16 @@ class Severity(Enum):
         self.label = label
         self.rank = rank
 
+    @classmethod
+    def from_label(cls, label: str) -> "Severity":
+        """Look up a severity by its label, case-insensitively."""
+        want = label.strip().lower()
+        for severity in cls:
+            if severity.label == want:
+                return severity
+        valid = ", ".join(s.label for s in cls)
+        raise ValueError(f"unknown severity '{label}'; expected one of: {valid}")
+
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.label
 
@@ -58,6 +68,8 @@ class OwaspCategory(Enum):
 
 
 class Verdict(Enum):
+    """The outcome of running one attack against a target."""
+
     VULNERABLE = "vulnerable"
     PASS = "pass"
     ERROR = "error"
@@ -117,6 +129,8 @@ class ToolCallResult:
 
 @dataclass
 class ProbeResult:
+    """One attack's result: what was tried, what came back, and the verdict."""
+
     probe_id: str
     probe_name: str
     category: OwaspCategory
@@ -129,9 +143,11 @@ class ProbeResult:
 
     @property
     def vulnerable(self) -> bool:
+        """True if this attack succeeded (i.e. the target is vulnerable)."""
         return self.verdict is Verdict.VULNERABLE
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialise this result for JSON reporting."""
         return {
             "probe_id": self.probe_id,
             "probe_name": self.probe_name,
@@ -149,6 +165,8 @@ class ProbeResult:
 
 @dataclass
 class ScanResult:
+    """Every result from one scan, plus the aggregation used by reports."""
+
     target_name: str
     results: list[ProbeResult] = field(default_factory=list)
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -162,11 +180,21 @@ class ScanResult:
 
     @property
     def worst_severity(self) -> Severity:
+        """The highest severity among the findings (INFO if there are none)."""
         if not self.findings:
             return Severity.INFO
         return max((r.severity for r in self.findings), key=lambda s: s.rank)
 
+    def findings_at_or_above(self, threshold: Severity) -> list[ProbeResult]:
+        """Findings whose severity is at or above `threshold`."""
+        return [r for r in self.findings if r.severity.rank >= threshold.rank]
+
+    def exceeds(self, threshold: Severity) -> bool:
+        """True if any finding is at or above `threshold` - the CI gate check."""
+        return bool(self.findings_at_or_above(threshold))
+
     def counts_by_verdict(self) -> dict[str, int]:
+        """How many results landed in each verdict, keyed by verdict name."""
         out: dict[str, int] = {v.value: 0 for v in Verdict}
         for r in self.results:
             out[r.verdict.value] += 1
@@ -194,6 +222,7 @@ class ScanResult:
         return "A"
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialise the whole scan for JSON reporting / CI consumption."""
         return {
             "target": self.target_name,
             "started_at": self.started_at.isoformat(),

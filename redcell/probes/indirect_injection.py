@@ -77,6 +77,8 @@ _ATTACKS = [
 
 @register
 class IndirectInjection(Probe):
+    """LLM01: instructions smuggled in via content the model is asked to process."""
+
     id = "llm01-indirect-injection"
     name = "Indirect / cross-context injection"
     category = OwaspCategory.LLM01
@@ -87,7 +89,9 @@ class IndirectInjection(Probe):
     )
 
     def attacks(self) -> list[Attack]:
+        """Documents carrying an embedded instruction, one per signal type."""
         return list(_ATTACKS)
 
     def detector(self) -> Detector:
+        """Scores obeying (out-of-band action), never quoting."""
         return OutOfBandActionDetector()

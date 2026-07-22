@@ -22,11 +22,13 @@ _REGISTRY: list[type["Probe"]] = []
 
 
 def register(cls: type["Probe"]) -> type["Probe"]:
+    """Class decorator that adds a probe to the registry."""
     _REGISTRY.append(cls)
     return cls
 
 
 def all_probes() -> list["Probe"]:
+    """Instantiate every registered probe."""
     return [cls() for cls in _REGISTRY]
 
 
@@ -34,6 +36,8 @@ def all_probes() -> list["Probe"]:
 
 
 class Probe(ABC):
+    """One OWASP category's worth of attacks plus the detector that scores them."""
+
     #: short stable id, e.g. "pi-instruction-override"
     id: str
     #: human name for reports
@@ -49,13 +53,16 @@ class Probe(ABC):
 
     @abstractmethod
     def attacks(self) -> list[Attack]:
+        """The adversarial inputs this probe sends."""
         raise NotImplementedError
 
     @abstractmethod
     def detector(self) -> Detector:
+        """The detector that scores this probe's responses."""
         raise NotImplementedError
 
     def run(self, target: Target) -> list[ProbeResult]:
+        """Run every attack against `target` and score each response."""
         detector = self.detector()
         results: list[ProbeResult] = []
         for attack in self.attacks():

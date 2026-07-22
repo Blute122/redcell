@@ -53,6 +53,7 @@ class ToolCallDetector:
     def evaluate_call(
         self, spec: ToolSpec, result: ToolCallResult, reason: str
     ) -> tuple[bool, str]:
+        """Return (is_vulnerable, evidence) for one attempted tool call."""
         if result.ok:
             evidence = (
                 f"Unauthorised call to destructive tool '{spec.name}' SUCCEEDED "

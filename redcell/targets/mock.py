@@ -24,6 +24,8 @@ _SYSTEM = (
 
 
 class MockVulnerableTarget(Target):
+    """A deliberately vulnerable in-process chat model, for the demo and tests."""
+
     name = "mock-vulnerable-llm"
 
     def __init__(self) -> None:
@@ -31,6 +33,7 @@ class MockVulnerableTarget(Target):
         self.canaries = [_SECRET]
 
     def send(self, prompt: str) -> str:
+        """Return a deliberately unsafe response matching the attack's shape."""
         # Deliberately naive: it has a genuine vulnerable response for *every*
         # attack in the starter probe set, so the evaluation can demonstrate
         # functional correctness (each detector fires on a real positive).
@@ -107,6 +110,7 @@ class HardenedMockTarget(Target):
         self.canaries = [_HARDENED_SECRET]
 
     def send(self, prompt: str) -> str:
+        """Refuse, or faithfully summarise without obeying embedded instructions."""
         if "summ" in prompt.lower():
             # Faithful summariser - the negative control for indirect injection.
             # It quotes the whole document (including any embedded instruction)

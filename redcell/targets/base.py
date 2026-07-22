@@ -14,6 +14,8 @@ from ..models import ToolCallResult, ToolSpec
 
 
 class Target(ABC):
+    """Anything RedCell can send a prompt to and get text back from."""
+
     #: Human-readable name shown in reports.
     name: str = "target"
 

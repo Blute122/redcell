@@ -1,3 +1,5 @@
+"""Targets: the systems RedCell can point probes at."""
+
 from .base import AgentTarget, Target
 from .mcp import MCPTarget
 from .mock import HardenedMockTarget, MockVulnerableTarget

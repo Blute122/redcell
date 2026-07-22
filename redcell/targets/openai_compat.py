@@ -16,6 +16,8 @@ from .base import Target
 
 
 class OpenAICompatTarget(Target):
+    """Any OpenAI-compatible /chat/completions endpoint, optionally canaried."""
+
     def __init__(
         self,
         base_url: str,
@@ -48,6 +50,7 @@ class OpenAICompatTarget(Target):
             )
 
     def send(self, prompt: str) -> str:
+        """POST one user turn to the endpoint and return the assistant's text."""
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})

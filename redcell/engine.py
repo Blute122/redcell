@@ -22,6 +22,10 @@ def select_probes(
     probe_ids: list[str] | None = None,
     include_agent: bool = False,
 ) -> list[Probe]:
+    """Pick probes from the registry, filtered by category and/or id.
+
+    Agent-only probes are excluded unless `include_agent` is True.
+    """
     probes = all_probes()
     if categories:
         wanted = {c.upper() for c in categories}

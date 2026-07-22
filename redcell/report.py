@@ -32,6 +32,7 @@ _VERDICT_COLOUR = {
 
 
 def print_console(scan: ScanResult, console: Console | None = None) -> None:
+    """Print a coloured summary table of the scan to the terminal."""
     console = console or Console()
 
     grade = scan.risk_grade()
@@ -66,10 +67,12 @@ def print_console(scan: ScanResult, console: Console | None = None) -> None:
 
 
 def to_json(scan: ScanResult, indent: int = 2) -> str:
+    """Render the scan as JSON, for CI pipelines and machine consumption."""
     return json.dumps(scan.to_dict(), indent=indent)
 
 
 def to_markdown(scan: ScanResult) -> str:
+    """Render the scan as a Markdown report, for write-ups."""
     lines: list[str] = []
     lines.append(f"# RedCell scan report\n")
     lines.append(f"**Target:** {scan.target_name}  ")

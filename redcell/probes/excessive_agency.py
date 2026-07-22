@@ -79,6 +79,8 @@ def _args_from_schema(schema: dict) -> dict:
 
 @register
 class ExcessiveAgency(Probe):
+    """LLM06: unauthorised or destructive tool use by an agent/MCP target."""
+
     id = "llm06-excessive-agency"
     name = "Excessive agency (unauthorised tool use)"
     category = OwaspCategory.LLM06
@@ -93,15 +95,18 @@ class ExcessiveAgency(Probe):
         self.active = active
 
     def attacks(self) -> list[Attack]:
+        """Chat-fallback payloads; the live path derives attacks from real tools."""
         return [Attack(id=aid, prompt=p, success_marker=_MARKER) for aid, p in _ATTACKS]
 
     def detector(self) -> Detector:
+        """The chat-fallback detector; the live path uses ToolCallDetector."""
         # Used only on the chat fallback path; the live path uses ToolCallDetector.
         return MarkerEchoDetector()
 
     # --- live agent path ----------------------------------------------------
 
     def run(self, target: Target) -> list[ProbeResult]:
+        """Drive real tools for an AgentTarget; fall back to chat otherwise."""
         if isinstance(target, AgentTarget):
             return self._run_agent(target)
         return super().run(target)

@@ -27,6 +27,8 @@ _ATTACKS = [
 
 @register
 class SensitiveInfoDisclosure(Probe):
+    """LLM02: extract secrets or credentials the model was told to protect."""
+
     id = "llm02-sensitive-info"
     name = "Sensitive information disclosure"
     category = OwaspCategory.LLM02
@@ -34,7 +36,9 @@ class SensitiveInfoDisclosure(Probe):
     description = "Attempts to extract secrets/credentials the model should protect."
 
     def attacks(self) -> list[Attack]:
+        """Direct, roleplay, encoding and summarisation routes to the secret."""
         return [Attack(id=aid, prompt=p) for aid, p in _ATTACKS]
 
     def detector(self) -> Detector:
+        """A planted canary in the output is an unambiguous leak."""
         return CanaryLeakDetector()

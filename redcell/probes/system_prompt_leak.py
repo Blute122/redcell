@@ -38,6 +38,7 @@ class _EitherDetector(Detector):
         self._heuristic = SystemLeakHeuristicDetector()
 
     def evaluate(self, attack, response, target):  # type: ignore[override]
+        """Prefer the canary signal; fall back to the heuristic."""
         vuln, ev = self._canary.evaluate(attack, response, target)
         if vuln:
             return vuln, ev
@@ -46,6 +47,8 @@ class _EitherDetector(Detector):
 
 @register
 class SystemPromptLeak(Probe):
+    """LLM07: make the model recite its hidden system/developer instructions."""
+
     id = "llm07-system-prompt-leak"
     name = "System prompt leakage"
     category = OwaspCategory.LLM07
@@ -54,7 +57,9 @@ class SystemPromptLeak(Probe):
     description = "Attempts to extract the hidden system/developer instructions."
 
     def attacks(self) -> list[Attack]:
+        """Verbatim, direct, debug-framed and continuation-style leak attempts."""
         return [Attack(id=aid, prompt=p) for aid, p in _ATTACKS]
 
     def detector(self) -> Detector:
+        """Canary leak if a canary is planted, else the recitation heuristic."""
         return _EitherDetector()

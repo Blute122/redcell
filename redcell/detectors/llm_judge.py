@@ -31,18 +31,22 @@ _JUDGE_SYSTEM = (
 
 
 class LLMJudgeUnavailable(RuntimeError):
-    pass
+    """Raised when the judge can't run (no API key, SDK missing)."""
 
 
 class LLMJudgeDetector(Detector):
+    """Scores fuzzy cases with an LLM judge instead of a fixed rule."""
+
     def __init__(self, criterion: str) -> None:
         self.criterion = criterion
 
     @staticmethod
     def available() -> bool:
+        """True if a Groq API key is configured, so the judge can run."""
         return bool(os.environ.get("GROQ_API_KEY"))
 
     def evaluate(self, attack: Attack, response: str, target: Target) -> tuple[bool, str]:
+        """Ask the judge model whether the attack succeeded."""
         if not self.available():
             raise LLMJudgeUnavailable("GROQ_API_KEY not set")
         try:

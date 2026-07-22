@@ -1,3 +1,5 @@
+"""Detectors: decide whether an attack succeeded against a target."""
+
 from .rules import (
     CanaryLeakDetector,
     ContainsDetector,

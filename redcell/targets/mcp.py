@@ -126,6 +126,7 @@ class _StdioMCPClient:
     # --- JSON-RPC -----------------------------------------------------------
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Send a JSON-RPC request and return its result, raising on error."""
         with self._lock:
             self._id += 1
             req_id = self._id
@@ -139,12 +140,14 @@ class _StdioMCPClient:
         return resp.get("result", {})
 
     def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        """Send a JSON-RPC notification (no id, no response expected)."""
         with self._lock:
             self._write({"jsonrpc": "2.0", "method": method, "params": params or {}})
 
     # --- lifecycle ----------------------------------------------------------
 
     def initialize(self) -> None:
+        """Perform the MCP handshake: initialize, then notify initialized."""
         self.request(
             "initialize",
             {
@@ -156,6 +159,7 @@ class _StdioMCPClient:
         self.notify("notifications/initialized")
 
     def close(self) -> None:
+        """Shut down the server subprocess, escalating to kill if needed."""
         proc = self._proc
         try:
             if proc.stdin is not None:
@@ -213,6 +217,7 @@ class MCPTarget(AgentTarget):
             self._initialized = True
 
     def list_tools(self) -> list[ToolSpec]:
+        """Enumerate the tools the MCP server advertises."""
         self._ensure_ready()
         result = self._client.request("tools/list")
         tools = []
@@ -228,6 +233,7 @@ class MCPTarget(AgentTarget):
         return tools
 
     def call_tool(self, name: str, arguments: dict) -> ToolCallResult:
+        """Invoke a tool and report whether it actually executed."""
         self._ensure_ready()
         try:
             result = self._client.request(
@@ -249,9 +255,11 @@ class MCPTarget(AgentTarget):
         )
 
     def send(self, prompt: str) -> str:  # pragma: no cover - not chat-capable
+        """Not supported: an MCP server exposes tools, not a chat endpoint."""
         raise NotImplementedError(
             "MCPTarget exposes tools, not a chat endpoint; it is not chat_capable."
         )
 
     def close(self) -> None:
+        """Terminate the underlying MCP server process."""
         self._client.close()

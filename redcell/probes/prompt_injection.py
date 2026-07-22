@@ -38,6 +38,8 @@ _TEMPLATES = [
 
 @register
 class DirectPromptInjection(Probe):
+    """LLM01: override developer instructions from the user turn."""
+
     id = "llm01-direct-injection"
     name = "Direct prompt injection (instruction override)"
     category = OwaspCategory.LLM01
@@ -45,10 +47,12 @@ class DirectPromptInjection(Probe):
     description = "Attempts to override developer instructions via the user turn."
 
     def attacks(self) -> list[Attack]:
+        """One injection payload per override technique."""
         return [
             Attack(id=aid, prompt=prompt, success_marker=_MARKER)
             for aid, prompt in _TEMPLATES
         ]
 
     def detector(self) -> Detector:
+        """The marker came back, so the guardrail was overridden."""
         return MarkerEchoDetector()
