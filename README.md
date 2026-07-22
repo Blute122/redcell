@@ -243,4 +243,5 @@ known categories fire — a controlled baseline for validating detection.
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+Apache-2.0. See [`LICENSE`](LICENSE) for the full text and
+[`NOTICE`](NOTICE) for attribution.
