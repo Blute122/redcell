@@ -9,7 +9,7 @@ description = "An OWASP LLM Top 10 vulnerability scanner for LLM apps and agents
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Vaibhav" }]
+authors = [{ name = "Vaibhav Agrawal" }]
 keywords = [
     "llm-security", "ai-security", "prompt-injection", "owasp",
     "red-teaming", "mcp", "agent-security",
