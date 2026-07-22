@@ -117,6 +117,8 @@ arguments.
 redcell scan --mcp-command "python my_mcp_server.py" --active
 ```
 
+![An active MCP scan: the ungated delete_account tool is confirmed vulnerable, while the auth-gated wire_transfer correctly passes](docs/demo-mcp.svg)
+
 > ⚠️ `--active` genuinely executes the tools it flags — `delete_account` really
 > deletes. Run it only against a server you own or a disposable/test instance.
 
