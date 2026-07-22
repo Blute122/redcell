@@ -322,16 +322,19 @@ def render_markdown(report: EvalReport) -> str:
     ]
     if has_real:
         runs = report.real_run_count
-        plural = "run" if runs == 1 else f"{runs} runs"
+        # State the measurement and let the ranges carry the meaning - with
+        # repeats these are reported variance, not a caveat needing apology.
+        if runs > 1:
+            provenance = f"{runs} independent runs on {date.today().isoformat()}"
+            cells = " Cells show the observed min–max across those runs."
+        else:
+            provenance = f"a single run on {date.today().isoformat()}"
+            cells = ""
         lines += [
             "",
-            "**³ Live model.** The chat probes run against a real model "
-            f"(`{report.real_label}`, served from `{report.real_endpoint}`) "
-            f"with a planted canary, measured {date.today().isoformat()} over "
-            f"{plural}. A live model is non-deterministic, so cells show the "
-            "**observed range** across those runs rather than a single "
-            "snapshot. It is a real-world reference point, never a pass/fail "
-            "control, and CI never asserts it.",
+            f"**³ Live model.** Chat probes against `{report.real_label}` "
+            f"(served from `{report.real_endpoint}`) with a planted canary — "
+            f"{provenance}.{cells}",
         ]
         stable = [s.code for s in report.stats if s.real_stable and s.real_min > 0]
         varying = [s.code for s in report.stats if s.real_runs and not s.real_stable]

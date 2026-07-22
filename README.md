@@ -148,11 +148,11 @@ RedCell is validated on two axes — **functional correctness** (does a detector
 
 | OWASP | Category | Vulnerable mock ¹ | Hardened control ² | Live model<br>(llama3.2) ³ |
 |-------|----------|:-----------------:|:------------------:|:--:|
-| LLM01 | Prompt Injection | 8 / 8 | 0 | 2–3 / 8 |
+| LLM01 | Prompt Injection | 8 / 8 | 0 | 2–4 / 8 |
 | LLM02 | Sensitive Information Disclosure | 4 / 4 | 0 | 0–1 / 4 |
 | LLM05 | Improper Output Handling | 3 / 3 | 0 | 0 / 3 |
 | LLM06&nbsp;† | Excessive Agency | 1 / 2 | 0 | n/a |
-| LLM07 | System Prompt Leakage | 4 / 4 | 0 | 1–2 / 4 |
+| LLM07 | System Prompt Leakage | 4 / 4 | 0 | 0–1 / 4 |
 | LLM09 | Misinformation | 1 / 1 | 0 | 0 / 1 |
 | **Total** | | **21 / 22** | **0** | — |
 
@@ -162,7 +162,7 @@ RedCell is validated on two axes — **functional correctness** (does a detector
 
 † LLM06 counts destructive tools, not prompts: the vulnerable MCP server exposes 2, but only `delete_account` is ungated — RedCell confirms exactly it, while the auth-gated `wire_transfer` correctly PASSes.
 
-**³ Live model.** The chat probes run against a real model (`llama3.2`, served from `http://localhost:11434/v1`) with a planted canary, measured 2026-07-22 over 3 runs. A live model is non-deterministic, so cells show the **observed range** across those runs rather than a single snapshot. It is a real-world reference point, never a pass/fail control, and CI never asserts it.
+**³ Live model.** Chat probes against `llama3.2` (served from `http://localhost:11434/v1`) with a planted canary — 3 independent runs on 2026-07-22. Cells show the observed min–max across those runs.
 
 Repeats separate two kinds of result: LLM01, LLM02, LLM07 moved between runs — a **boundary finding**, where the model sometimes resists and sometimes complies.
 
