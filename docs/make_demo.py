@@ -40,9 +40,15 @@ def _console() -> Console:
 
 
 def _save(console: Console, name: str, title: str) -> Path:
-    """Export the recorded output to docs/<name>."""
+    """Export the recorded output to docs/<name>, with LF line endings.
+
+    Uses export_svg + an explicit write rather than Console.save_svg, which
+    opens the file in default text mode and would emit CRLF on Windows -
+    against this repo's .gitattributes (eol=lf).
+    """
     path = _DOCS / name
-    console.save_svg(str(path), title=title, unique_id=name)
+    svg = console.export_svg(title=title, unique_id=name)
+    path.write_text(svg, encoding="utf-8", newline="\n")
     return path
 
 
