@@ -94,7 +94,23 @@ def test_live_column_renders_against_reachable_stub(stub_openai_url, monkeypatch
     # The canned marker echo means the injection category fired live.
     llm01 = next(s for s in report.stats if s.code == "LLM01")
     assert llm01.real_total > 0
-    assert llm01.real_fired >= 1
+    assert llm01.real_max >= 1
+    assert len(llm01.real_runs) == report.real_run_count == 1
+
+
+def test_repeat_runs_record_one_count_each_and_report_a_range(stub_openai_url, monkeypatch):
+    # Repeats drive the observed-range reporting. The stub is deterministic, so
+    # every run matches and the category reads as stable.
+    _set_live_env(monkeypatch, stub_openai_url)
+    report = run_evaluation(include_real=True, runs=3)
+
+    assert report.real_run_count == 3
+    llm01 = next(s for s in report.stats if s.code == "LLM01")
+    assert len(llm01.real_runs) == 3
+    assert llm01.real_stable and llm01.real_min == llm01.real_max
+    # A stable, non-zero category renders as a single figure, not a range.
+    row = next(l for l in render_markdown(report).splitlines() if l.startswith("| LLM01"))
+    assert "–" not in row
 
 
 def test_live_section_skips_when_endpoint_unreachable(monkeypatch):

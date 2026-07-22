@@ -26,8 +26,10 @@ offline runs stay green:
 
 Run it:
 
-    python evaluation/run_eval.py            # prints the table, updates README
+    python evaluation/run_eval.py             # prints the table, updates README
     python evaluation/run_eval.py --no-write  # print only
+    python evaluation/run_eval.py --runs=3    # repeat the live probes, report
+                                              # the observed range per category
 
 LLM06 numbers use --active (actually invoking tools), the tier that *confirms*
 exploitability; the passive tier deliberately over-reports and is summarised in
@@ -91,8 +93,26 @@ class CategoryStat:
     detected: int          # VULNERABLE verdicts on the vulnerable target
     attempts: int          # attacks attempted on the vulnerable target
     false_positives: int   # VULNERABLE verdicts on the hardened target
-    real_fired: int = 0    # VULNERABLE verdicts on the live model
-    real_total: int = 0    # attacks run against the live model (0 = n/a)
+    #: Fired count per live-model run - one entry per repeat. A live model is
+    #: non-deterministic, so repeats let us report observed variance (a range)
+    #: instead of a single snapshot.
+    real_runs: list[int] = field(default_factory=list)
+    real_total: int = 0    # attacks per live run (0 = n/a, e.g. agent-only)
+
+    @property
+    def real_min(self) -> int:
+        """Lowest fired count across the live runs."""
+        return min(self.real_runs) if self.real_runs else 0
+
+    @property
+    def real_max(self) -> int:
+        """Highest fired count across the live runs."""
+        return max(self.real_runs) if self.real_runs else 0
+
+    @property
+    def real_stable(self) -> bool:
+        """True if every live run produced the same count."""
+        return bool(self.real_runs) and self.real_min == self.real_max
 
 
 @dataclass
@@ -105,6 +125,7 @@ class EvalReport:
     real_label: str | None = None     # live model NAME only - goes in the header
     real_endpoint: str | None = None  # endpoint - provenance, footnote only
     real_note: str | None = None      # why the live column was skipped
+    real_run_count: int = 0           # how many times the live probes were run
 
     @property
     def total_detected(self) -> int:
@@ -151,23 +172,36 @@ def _scan_agent(hardened: bool, active: bool) -> list[ProbeResult]:
         target.close()
 
 
-def _real_target() -> tuple[OpenAICompatTarget | None, str | None]:
-    """Build the live-model target from env, or return (None, note).
+def _build_real_target() -> OpenAICompatTarget | None:
+    """Construct a live target from env, with a FRESH canary each call.
 
-    A note of ``None`` means the section was simply not requested (env unset);
-    a string note means it was requested but unreachable.
+    Repeat runs must each get their own target: the canary is minted per
+    construction, and requests go out at temperature 0. Reusing one target
+    would send byte-identical prompts every repeat, so the runs would agree
+    with each other by construction and "stable" would mean nothing.
     """
     url = os.environ.get(_URL_ENV)
     model = os.environ.get(_MODEL_ENV)
     if not url or not model:
-        return None, None
-    target = OpenAICompatTarget(
+        return None
+    return OpenAICompatTarget(
         base_url=url,
         model=model,
         api_key=os.environ.get(_KEY_ENV),
         system_prompt=os.environ.get(_SYSTEM_ENV, _DEFAULT_SYSTEM),
         timeout=float(os.environ.get(_TIMEOUT_ENV, _DEFAULT_TIMEOUT)),
     )
+
+
+def _real_target() -> tuple[OpenAICompatTarget | None, str | None]:
+    """Build and preflight the live target, or return (None, reason).
+
+    A reason of ``None`` means the section was simply not requested (env
+    unset); a string reason means it was requested but unreachable.
+    """
+    target = _build_real_target()
+    if target is None:
+        return None, None
     try:  # preflight so an unreachable endpoint skips instead of filling 0s
         target.send("ping")
     except Exception as exc:  # noqa: BLE001 - any transport failure => skip
@@ -175,8 +209,13 @@ def _real_target() -> tuple[OpenAICompatTarget | None, str | None]:
     return target, None
 
 
-def run_evaluation(include_real: bool = True) -> EvalReport:
-    """Run every target and aggregate. `include_real=False` stays fully offline."""
+def run_evaluation(include_real: bool = True, runs: int = 1) -> EvalReport:
+    """Run every target and aggregate.
+
+    `include_real=False` stays fully offline. `runs` repeats the *live* probes
+    only (the offline targets are deterministic), so the live column can report
+    observed variance rather than a single snapshot.
+    """
     chat_probes = select_probes()  # excludes agent-only probes
 
     vuln = run_scan(MockVulnerableTarget(), chat_probes).results
@@ -186,7 +225,7 @@ def run_evaluation(include_real: bool = True) -> EvalReport:
 
     report = EvalReport()
 
-    real_results: list[ProbeResult] = []
+    real_scans: list[list[ProbeResult]] = []
     if include_real:
         target, note = _real_target()
         if target is not None:
@@ -194,16 +233,26 @@ def run_evaluation(include_real: bool = True) -> EvalReport:
             # and belongs in the footnote, not as a clickable URL in a heading.
             report.real_label = target.model
             report.real_endpoint = target.base_url
-            real_results = run_scan(target, chat_probes).results
+            total_runs = max(1, runs)
+            for i in range(total_runs):
+                print(f"[live model] run {i + 1}/{total_runs}...", file=sys.stderr)
+                # Fresh target per repeat => fresh canary => an independent
+                # trial. Reusing the preflighted one would make every repeat
+                # identical at temperature 0.
+                trial = target if i == 0 else _build_real_target()
+                assert trial is not None  # env was present a moment ago
+                real_scans.append(run_scan(trial, chat_probes).results)
+            report.real_run_count = len(real_scans)
         else:
             report.real_note = note
 
     for code, title in _CATEGORIES:
         detected, attempts = _count(vuln, code)
         false_pos, _ = _count(hard, code)
-        real_fired, real_total = _count(real_results, code)
+        real_runs = [_count(scan, code)[0] for scan in real_scans]
+        real_total = _count(real_scans[0], code)[1] if real_scans else 0
         report.stats.append(
-            CategoryStat(code, title, detected, attempts, false_pos, real_fired, real_total)
+            CategoryStat(code, title, detected, attempts, false_pos, real_runs, real_total)
         )
 
     passive_hard = _scan_agent(hardened=True, active=False)
@@ -239,7 +288,12 @@ def render_markdown(report: EvalReport) -> str:
         cell = f" {s.detected} / {s.attempts} "
         row = f"| {code} | {s.title} |{cell}| {s.false_positives} |"
         if has_real:
-            real_cell = f" {s.real_fired} / {s.real_total} " if s.real_total else " n/a "
+            if not s.real_total:
+                real_cell = " n/a "
+            elif s.real_stable:
+                real_cell = f" {s.real_min} / {s.real_total} "
+            else:
+                real_cell = f" {s.real_min}–{s.real_max} / {s.real_total} "
             row += f"{real_cell}|"
         lines.append(row)
 
@@ -267,16 +321,34 @@ def render_markdown(report: EvalReport) -> str:
         "it, while the auth-gated `wire_transfer` correctly PASSes.",
     ]
     if has_real:
+        runs = report.real_run_count
+        plural = "run" if runs == 1 else f"{runs} runs"
         lines += [
             "",
             "**³ Live model.** The chat probes run against a real model "
             f"(`{report.real_label}`, served from `{report.real_endpoint}`) "
-            f"with a planted canary, measured "
-            f"{date.today().isoformat()}. This is a **snapshot, not a fixed "
-            "result**: a live model is non-deterministic, so re-running shifts "
-            "the counts by an attack or two. It is a real-world reference "
-            "point, never a pass/fail control, and CI never asserts it.",
+            f"with a planted canary, measured {date.today().isoformat()} over "
+            f"{plural}. A live model is non-deterministic, so cells show the "
+            "**observed range** across those runs rather than a single "
+            "snapshot. It is a real-world reference point, never a pass/fail "
+            "control, and CI never asserts it.",
         ]
+        stable = [s.code for s in report.stats if s.real_stable and s.real_min > 0]
+        varying = [s.code for s in report.stats if s.real_runs and not s.real_stable]
+        if runs > 1 and (stable or varying):
+            parts = []
+            if stable:
+                parts.append(
+                    f"{', '.join(stable)} reproduced identically in every run — a "
+                    "**stable finding**, i.e. the attack reliably breaks this model"
+                )
+            if varying:
+                parts.append(
+                    f"{', '.join(varying)} moved between runs — a **boundary "
+                    "finding**, where the model sometimes resists and sometimes "
+                    "complies"
+                )
+            lines += ["", "Repeats separate two kinds of result: " + "; ".join(parts) + "."]
     else:
         lines += [
             "",
@@ -323,7 +395,12 @@ def main(argv: list[str] | None = None) -> int:
     writing = "--no-write" not in argv
     had_live = readme_has_live_column()
 
-    report = run_evaluation()
+    runs = 1
+    for arg in argv:
+        if arg.startswith("--runs="):
+            runs = max(1, int(arg.split("=", 1)[1]))
+
+    report = run_evaluation(runs=runs)
     if report.real_note:
         print(f"[live model] {report.real_note}; skipping that column.", file=sys.stderr)
 
