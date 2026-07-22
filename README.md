@@ -20,7 +20,7 @@ pip install -e .
 redcell scan --demo      # zero setup, no API key, no network
 ```
 
-![RedCell scanning the built-in vulnerable target](docs/demo.svg)
+![RedCell confirming excessive agency on an MCP server: the ungated delete_account tool executes and is flagged vulnerable, while the auth-gated wire_transfer is refused and correctly passes](docs/demo-mcp.svg)
 
 ## What makes it different
 
@@ -58,6 +58,8 @@ positives**. See [Results](#results).
 redcell scan --demo       # scan the built-in vulnerable mock
 redcell list-probes       # see the probe catalogue
 ```
+
+![A full offline scan of the built-in vulnerable mock: 20 findings across five OWASP categories, graded F](docs/demo.svg)
 
 Scan a real OpenAI-compatible endpoint (OpenAI, Groq, Ollama, LM Studio, or
 your own FastAPI wrapper):
@@ -116,8 +118,6 @@ arguments.
 ```bash
 redcell scan --mcp-command "python my_mcp_server.py" --active
 ```
-
-![An active MCP scan: the ungated delete_account tool is confirmed vulnerable, while the auth-gated wire_transfer correctly passes](docs/demo-mcp.svg)
 
 > ⚠️ `--active` genuinely executes the tools it flags — `delete_account` really
 > deletes. Run it only against a server you own or a disposable/test instance.

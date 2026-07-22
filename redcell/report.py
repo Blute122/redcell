@@ -9,6 +9,7 @@ Three outputs from one ScanResult:
 from __future__ import annotations
 
 import json
+import textwrap
 
 from rich.console import Console
 from rich.table import Table
@@ -60,7 +61,9 @@ def print_console(scan: ScanResult, console: Console | None = None) -> None:
             r.attack.id,
             f"[{_VERDICT_COLOUR[r.verdict]}]{r.verdict.value}[/]",
             f"[{_SEV_COLOUR[r.severity]}]{r.severity.label}[/]",
-            (r.evidence or r.notes)[:60],
+            # Trim at a word boundary with an ellipsis - a hard slice cuts
+            # mid-word ("...SUCCE") and reads like a bug rather than a trim.
+            textwrap.shorten(r.evidence or r.notes or "", width=80, placeholder=" …"),
         )
     console.print(table)
     console.print()
