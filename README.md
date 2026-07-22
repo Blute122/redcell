@@ -241,6 +241,10 @@ pytest -q
 The suite runs the full probe set against the vulnerable mock and asserts the
 known categories fire — a controlled baseline for validating detection.
 
+## Changelog
+
+See [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+
 ## License
 
 Apache-2.0. See [`LICENSE`](LICENSE) for the full text and
