@@ -102,8 +102,9 @@ class EvalReport:
     stats: list[CategoryStat] = field(default_factory=list)
     passive_hardened_flags: int = 0
     active_hardened_flags: int = 0
-    real_label: str | None = None   # live-model name when it ran
-    real_note: str | None = None    # why the live column was skipped
+    real_label: str | None = None     # live model NAME only - goes in the header
+    real_endpoint: str | None = None  # endpoint - provenance, footnote only
+    real_note: str | None = None      # why the live column was skipped
 
     @property
     def total_detected(self) -> int:
@@ -171,7 +172,7 @@ def _real_target() -> tuple[OpenAICompatTarget | None, str | None]:
         target.send("ping")
     except Exception as exc:  # noqa: BLE001 - any transport failure => skip
         return None, f"{_URL_ENV} set but endpoint unreachable ({exc.__class__.__name__})"
-    return target, target.name
+    return target, None
 
 
 def run_evaluation(include_real: bool = True) -> EvalReport:
@@ -189,7 +190,10 @@ def run_evaluation(include_real: bool = True) -> EvalReport:
     if include_real:
         target, note = _real_target()
         if target is not None:
-            report.real_label = note
+            # Model name is what the header shows; the endpoint is provenance
+            # and belongs in the footnote, not as a clickable URL in a heading.
+            report.real_label = target.model
+            report.real_endpoint = target.base_url
             real_results = run_scan(target, chat_probes).results
         else:
             report.real_note = note
@@ -215,6 +219,8 @@ def run_evaluation(include_real: bool = True) -> EvalReport:
 def render_markdown(report: EvalReport) -> str:
     """Render the report as a self-contained Markdown block."""
     has_real = report.real_label is not None
+    # Model name only - a bare endpoint URL here would be autolinked by GitHub
+    # into a dead localhost link. The endpoint lives in footnote 3 instead.
     real_hdr = f" Live model<br>({report.real_label}) ³ |" if has_real else ""
     real_sep = ":--:|" if has_real else ""
 
@@ -239,7 +245,9 @@ def render_markdown(report: EvalReport) -> str:
 
     total = f"| **Total** | | **{report.total_detected} / {report.total_attempts}** | **{report.total_false_positives}** |"
     if has_real:
-        total += " |"
+        # Em-dash, not blank: the live column is deliberately not totalled
+        # (it's a snapshot reference), and blank would read as missing data.
+        total += " — |"
     lines.append(total)
 
     lines += [
@@ -262,7 +270,8 @@ def render_markdown(report: EvalReport) -> str:
         lines += [
             "",
             "**³ Live model.** The chat probes run against a real model "
-            f"(`{report.real_label}`) with a planted canary, measured "
+            f"(`{report.real_label}`, served from `{report.real_endpoint}`) "
+            f"with a planted canary, measured "
             f"{date.today().isoformat()}. This is a **snapshot, not a fixed "
             "result**: a live model is non-deterministic, so re-running shifts "
             "the counts by an attack or two. It is a real-world reference "
