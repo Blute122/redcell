@@ -33,34 +33,36 @@ _MCP_SERVER = _REPO / "tests" / "mock_mcp_server.py"
 # README image into roughly a 900px column, so effective character width is
 # ~900/columns px. At 160 columns that is ~5.6px - unreadable, and it reads as
 # muddy grey no matter the palette. 96 columns gives ~9.4px.
-_HERO_WIDTH = 96      # the compact MCP capture used at the top of the README
-_FULL_WIDTH = 110     # the full demo scan; denser, shown further down
+_HERO_WIDTH = 80      # the compact MCP capture used at the top (~11.2px/char)
+_FULL_WIDTH = 110     # the full demo scan; 20 findings can't also be large
 
-#: High-contrast palette. rich's default export theme puts dim reds/greens on
-#: dark grey (3.5:1 and 4.1:1 - both under WCAG AA); these clear 4.5:1 against
-#: the background and read correctly in GitHub's light and dark modes.
+#: Light palette - dark text on white. A dark terminal theme looks natural but
+#: is the wrong choice for a README image: thin light strokes on a dark ground
+#: bloom and wash out once the image is downscaled into a ~900px column, which
+#: reads as "too dark" no matter how high the nominal contrast is. Dark-on-light
+#: survives downscaling far better. Colours are GitHub's light-mode semantics.
 _THEME = TerminalTheme(
-    (13, 17, 23),        # background  #0d1117
-    (230, 237, 243),     # foreground  #e6edf3  (13.9:1)
+    (255, 255, 255),     # background  white
+    (31, 35, 40),        # foreground  #1f2328  (14.7:1)
     [
-        (48, 54, 61),    # black
-        (255, 123, 114),  # red      #ff7b72  vulnerable
-        (63, 185, 80),   # green    #3fb950  pass
-        (210, 153, 34),  # yellow   #d29922  medium
-        (88, 166, 255),  # blue     #58a6ff
-        (188, 140, 255),  # magenta  #bc8cff
-        (57, 197, 207),  # cyan     #39c5cf
-        (230, 237, 243),  # white
+        (31, 35, 40),    # black
+        (207, 34, 46),   # red      #cf222e  vulnerable
+        (26, 127, 55),   # green    #1a7f37  pass
+        (154, 103, 0),   # yellow   #9a6700  medium
+        (9, 105, 218),   # blue     #0969da
+        (130, 80, 223),  # magenta  #8250df
+        (23, 109, 120),  # cyan     #176d78
+        (89, 99, 110),   # white -> used for dim text
     ],
     [
-        (139, 148, 158),  # bright black - table borders/dim text, 5.6:1
-        (255, 166, 158),
-        (86, 211, 100),
-        (227, 179, 65),
-        (121, 192, 255),
-        (210, 168, 255),
-        (86, 216, 225),
-        (255, 255, 255),
+        (89, 99, 110),   # bright black - table borders/dim text, 5.6:1
+        (164, 14, 38),
+        (17, 99, 41),
+        (119, 78, 0),
+        (2, 81, 187),
+        (104, 44, 191),
+        (18, 87, 96),
+        (31, 35, 40),
     ],
 )
 

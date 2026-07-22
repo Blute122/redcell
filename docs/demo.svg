@@ -32,14 +32,14 @@
         font-family: arial;
     }
 
-    .demo.svg-r1 { fill: #e6edf3 }
-.demo.svg-r2 { fill: #56d364 }
-.demo.svg-r3 { fill: #e6edf3;font-weight: bold }
-.demo.svg-r4 { fill: #ff7b72;font-weight: bold }
-.demo.svg-r5 { fill: #39c5cf;font-weight: bold }
-.demo.svg-r6 { fill: #ff7b72 }
-.demo.svg-r7 { fill: #d29922 }
-.demo.svg-r8 { fill: #39c5cf }
+    .demo.svg-r1 { fill: #1f2328 }
+.demo.svg-r2 { fill: #116329 }
+.demo.svg-r3 { fill: #1f2328;font-weight: bold }
+.demo.svg-r4 { fill: #cf222e;font-weight: bold }
+.demo.svg-r5 { fill: #176d78;font-weight: bold }
+.demo.svg-r6 { fill: #cf222e }
+.demo.svg-r7 { fill: #9a6700 }
+.demo.svg-r8 { fill: #176d78 }
     </style>
 
     <defs>
@@ -234,7 +234,7 @@
             </clipPath>
     </defs>
 
-    <rect fill="#0d1117" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="1358" height="1585.2" rx="8"/><text class="demo.svg-title" fill="#e6edf3" text-anchor="middle" x="679" y="27">redcell&#160;scan&#160;--demo</text>
+    <rect fill="#ffffff" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="1358" height="1585.2" rx="8"/><text class="demo.svg-title" fill="#1f2328" text-anchor="middle" x="679" y="27">redcell&#160;scan&#160;--demo</text>
             <g transform="translate(26,22)">
             <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
             <circle cx="22" cy="0" r="7" fill="#febc2e"/>
