@@ -178,10 +178,9 @@ tags and a `security-severity` score, so GitHub sorts and filters them like any
 other alert. A workflow (`.github/workflows/sarif.yml`) runs the demo scan and
 uploads the SARIF on every push to `main`.
 
-<!-- After the SARIF workflow runs once on main, screenshot Security → Code
-     scanning and drop it in here (docs/security-tab.png), then uncomment:
+
 ![RedCell findings in the GitHub Security tab](docs/security-tab.png)
--->
+
 
 ## What it checks
 
