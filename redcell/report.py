@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .models import ScanResult, Severity, Verdict
+from .report_sarif import to_sarif  # noqa: F401 - re-exported single entry point
 
 _SEV_COLOUR = {
     Severity.CRITICAL: "bold red",
