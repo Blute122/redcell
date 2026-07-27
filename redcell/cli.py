@@ -20,11 +20,15 @@ from . import __version__
 from .engine import run_scan, select_probes
 from .models import Severity
 from .probes import all_probes
-from .report import print_console, to_json, to_markdown
+from .report import print_console, to_json, to_markdown, to_sarif
 from .targets import MCPTarget, MockVulnerableTarget, OpenAICompatTarget
 
 app = typer.Typer(add_completion=False, help="RedCell - OWASP LLM Top 10 scanner.")
 console = Console()
+
+#: Report renderers by --format value. sarif emits SARIF 2.1.0 for GitHub
+#: code scanning; md/json are unchanged.
+_REPORTERS = {"md": to_markdown, "json": to_json, "sarif": to_sarif}
 
 
 def _safe_streams() -> None:
@@ -76,7 +80,7 @@ def scan(
              "targets only. Default is passive (flag without invoking).",
     ),
     output: Path = typer.Option(None, "--output", "-o", help="Write report to a file."),
-    fmt: str = typer.Option("md", "--format", "-f", help="Output format: md or json."),
+    fmt: str = typer.Option("md", "--format", "-f", help="Output format: md, json, or sarif."),
     fail_on: str = typer.Option(
         None, "--fail-on",
         help="Exit non-zero if any finding is at or above this severity "
@@ -85,6 +89,11 @@ def scan(
 ) -> None:
     """Run a scan against a target (or the demo mock)."""
     _safe_streams()
+    if fmt not in _REPORTERS:
+        console.print(
+            f"[red]Unknown --format '{fmt}'. Choose from: {', '.join(_REPORTERS)}.[/]"
+        )
+        raise typer.Exit(code=2)
     if demo:
         target = MockVulnerableTarget()
     elif mcp_command:
@@ -121,7 +130,7 @@ def scan(
     print_console(result, console)
 
     if output:
-        text = to_json(result) if fmt == "json" else to_markdown(result)
+        text = _REPORTERS[fmt](result)
         output.write_text(text, encoding="utf-8")
         console.print(f"Report written to [bold]{output}[/] ({fmt}).")
 
