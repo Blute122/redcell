@@ -23,7 +23,9 @@ dependencies = [
 [project.optional-dependencies]
 # Enables the optional LLM-as-judge detector.
 judge = ["groq>=0.11"]
-dev = ["pytest>=8.0"]
+# jsonschema is test-only: it validates SARIF output. SARIF *generation* uses
+# stdlib json and stays dependency-free.
+dev = ["pytest>=8.0", "jsonschema>=4.0"]
 
 [project.scripts]
 redcell = "redcell.cli:app"
