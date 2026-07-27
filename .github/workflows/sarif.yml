@@ -1,0 +1,45 @@
+name: SARIF
+
+# Runs the demo scan, emits SARIF 2.1.0, and uploads it so RedCell's own
+# findings render under Security -> Code scanning. Runs on main (that's the
+# branch whose results populate the Security tab) and on demand.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  scan-and-upload:
+    name: RedCell SARIF -> code scanning
+    runs-on: ubuntu-latest
+    # Mandatory: without security-events write the upload silently no-ops and
+    # you get a green run with an empty Security tab.
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install RedCell
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # No --fail-on here: the demo's job is to PRODUCE findings to display, not
+      # to gate. A non-zero exit would fail the job before the upload runs.
+      # `python -m` rather than the `redcell` script so this never depends on
+      # the console-script dir being on PATH.
+      - name: Generate SARIF from the demo scan
+        run: python -m redcell.cli scan --demo --format sarif -o results.sarif
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: redcell

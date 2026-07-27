@@ -169,6 +169,20 @@ Repeats separate two kinds of result: LLM01, LLM02, LLM07 moved between runs —
 **Passive vs. active (LLM06).** In passive mode RedCell flags 2 destructive tools on the *hardened* MCP server as advisory MEDIUM exposures; `--active` invokes them, both are refused, and they clear to PASS (0 confirmed) — the detection-confidence vs. operational-safety trade-off, made measurable.
 <!-- RESULTS_TABLE:END -->
 
+### GitHub code scanning (SARIF)
+
+RedCell emits **SARIF 2.1.0** (`redcell scan … --format sarif`), so its findings
+upload to GitHub and render natively under **Security → Code scanning** — the
+same surface CodeQL and commercial scanners use. Findings carry OWASP category
+tags and a `security-severity` score, so GitHub sorts and filters them like any
+other alert. A workflow (`.github/workflows/sarif.yml`) runs the demo scan and
+uploads the SARIF on every push to `main`.
+
+<!-- After the SARIF workflow runs once on main, screenshot Security → Code
+     scanning and drop it in here (docs/security-tab.png), then uncomment:
+![RedCell findings in the GitHub Security tab](docs/security-tab.png)
+-->
+
 ## What it checks
 
 | OWASP | Probe | What it does |
@@ -232,7 +246,7 @@ class MyProbe(Probe):
 - [ ] **MCP server scanning (breadth)** — tool poisoning, insecure auth,
       injection-driven tool *sequences*; HTTP/SSE transport.
 - [x] **CI gate** — `--fail-on <severity>` blocks a pipeline on findings.
-- [ ] SARIF output for GitHub code scanning.
+- [x] **SARIF output** — `--format sarif` for native GitHub code scanning.
 - [ ] Expanded payload corpora per category; MITRE ATLAS mapping alongside OWASP.
 
 ## Tests

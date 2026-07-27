@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet. Planned next: broader MCP coverage (tool poisoning, insecure auth,
-injection-driven tool *sequences*), an HTTP/SSE MCP transport, and SARIF output
-for GitHub code scanning.
+### Added
+
+- **SARIF 2.1.0 output** (`--format sarif`) so findings render natively in
+  GitHub's Security → Code scanning tab. Generation is stdlib-only; a workflow
+  uploads the demo scan's SARIF on every push to `main`. Findings use logical
+  locations (RedCell is black-box) with a documented placeholder physical
+  location for GitHub, and carry OWASP tags plus a `security-severity` score.
+
+Planned next: broader MCP coverage (tool poisoning, insecure auth,
+injection-driven tool *sequences*) and an HTTP/SSE MCP transport.
 
 ## [0.1.0] - 2026-07-22
 
