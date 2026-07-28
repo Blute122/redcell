@@ -7,16 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Planned next: broader MCP coverage (tool poisoning, insecure auth,
+injection-driven tool *sequences*) and an HTTP/SSE MCP transport.
+
+## [0.2.0] - 2026-07-28
+
 ### Added
 
 - **SARIF 2.1.0 output** (`--format sarif`) so findings render natively in
-  GitHub's Security → Code scanning tab. Generation is stdlib-only; a workflow
-  uploads the demo scan's SARIF on every push to `main`. Findings use logical
-  locations (RedCell is black-box) with a documented placeholder physical
-  location for GitHub, and carry OWASP tags plus a `security-severity` score.
-
-Planned next: broader MCP coverage (tool poisoning, insecure auth,
-injection-driven tool *sequences*) and an HTTP/SSE MCP transport.
+  GitHub's Security → Code scanning tab, the same surface as CodeQL. Generation
+  is stdlib-only (no runtime dependency); a workflow uploads the demo scan's
+  SARIF on every push to `main`. Only VULNERABLE findings become results, each
+  declaring a matching rule (no orphan ruleIds). Findings use logical locations
+  (RedCell is black-box) with a documented, clearly-non-source placeholder
+  physical location so GitHub can surface the alert, and carry OWASP category
+  tags plus a `security-severity` score mapped to GitHub's severity bands. The
+  output is validated against the official SARIF 2.1.0 schema in CI.
 
 ## [0.1.0] - 2026-07-22
 
@@ -83,5 +89,6 @@ unreachable. It writes its table straight into the README.
 hermetic coverage of the MCP and live-model paths, docstring-coverage tests, and
 the verbatim Apache-2.0 licence with a `NOTICE`.
 
-[Unreleased]: https://github.com/Blute122/redcell/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Blute122/redcell/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Blute122/redcell/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Blute122/redcell/releases/tag/v0.1.0
