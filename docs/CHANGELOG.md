@@ -7,25 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **MCP scanning breadth** — RedCell now covers the MCP attack surface across
-  four angles: excessive agency, tool poisoning, insecure auth, and
-  injection-sequence detection.
-  - **HTTP/SSE transport** (`--mcp-url`, `--mcp-header`) reaches hosted MCP
-    servers, not just local stdio. The MCP protocol layer is shared between the
-    two transports; auth headers are treated as credentials and never logged or
-    written to reports/SARIF.
-  - **Tool-poisoning probe** (LLM01) inspects tool metadata for model-directed
-    instructions, hidden/unicode characters, and exfiltration directives —
-    passive, with each indicator tuned against its false-positive case.
-  - **Insecure-auth probe** (LLM06) flags destructive tools exposed with no
-    authentication, sharing the destructive classifier with excessive-agency.
-  - **Injection-sequence detector** flags a benign read chaining into an
-    exfiltration where the sequence, not either call, is the finding.
-
 Planned next: driving a live multi-step agent to generate sequence traces, then
 expanded payload corpora and MITRE ATLAS mapping.
+
+## [0.3.0] - 2026-07-29
+
+**MCP scanning breadth: HTTP/SSE transport and three new agent-side checks.**
+RedCell now covers the MCP attack surface across four angles — excessive agency,
+tool poisoning, insecure auth, and injection-sequence detection — the agent-side
+breadth that distinguishes it from prompt-layer scanners.
+
+### Added
+
+- **HTTP/SSE MCP transport** (`--mcp-url`, `--mcp-header`) reaches hosted MCP
+  servers, not just local stdio. The JSON-RPC protocol layer is shared between
+  the two transports (one `MCPSession`, two transports), so they can't drift.
+  Auth headers are treated as credentials: sent only to the server, never
+  logged, never in the target name, never written to reports or SARIF.
+- **Tool-poisoning probe** (LLM01, via tooling) inspects advertised tool
+  metadata for model-directed instructions, hidden/unicode characters, and
+  exfiltration directives — passive, with each indicator tuned against the
+  legitimate case that would otherwise false-positive.
+- **Insecure-auth probe** (LLM06) flags destructive tools exposed with no
+  authentication/gating, reusing the *same* destructive classifier as
+  excessive-agency so the two can't disagree on what "destructive" means.
+- **Injection-sequence detector** flags a benign sensitive-read chaining into an
+  exfiltration where the *sequence*, not either call, is the finding. Detection
+  logic ships against recorded traces; driving a live multi-step agent to
+  generate traces is a documented roadmap item (it exceeds the current
+  `list_tools`/`call_tool` target contract).
 
 ## [0.2.0] - 2026-07-28
 
@@ -106,6 +116,7 @@ unreachable. It writes its table straight into the README.
 hermetic coverage of the MCP and live-model paths, docstring-coverage tests, and
 the verbatim Apache-2.0 licence with a `NOTICE`.
 
-[Unreleased]: https://github.com/Blute122/redcell/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Blute122/redcell/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Blute122/redcell/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Blute122/redcell/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Blute122/redcell/releases/tag/v0.1.0
