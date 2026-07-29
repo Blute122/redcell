@@ -20,8 +20,11 @@ import pytest
 
 from redcell.engine import run_scan, select_probes
 from redcell.models import Severity, Verdict
+from redcell.probes import all_probes
 from redcell.probes.excessive_agency import ExcessiveAgency
 from redcell.targets import MCPTarget
+
+_AGENT_PROBE_IDS = {p.id for p in all_probes() if p.requires_agent}
 
 _SERVER = Path(__file__).with_name("mock_mcp_server.py")
 
@@ -98,23 +101,27 @@ def test_engine_passive_default_flags_but_does_not_invoke(mcp_target):
     assert any(r.verdict is Verdict.VULNERABLE for r in llm06)
 
     # Every skipped result is a chat-only probe skipped for lack of a prompt
-    # interface; only the agent probes (LLM06 + tool-poisoning) actually ran.
+    # interface; only agent probes actually ran. Tested by the property
+    # (requires_agent) via the registry, so new agent probes don't break it.
     skipped = [r for r in scan.results if r.verdict is Verdict.SKIPPED]
     assert skipped and all("not chat-capable" in r.notes for r in skipped)
+    assert all(r.probe_id not in _AGENT_PROBE_IDS for r in skipped)
     ran = {r.probe_id for r in scan.results if r.verdict is not Verdict.SKIPPED}
-    assert ran <= {"llm06-excessive-agency", "llm01-tool-poisoning"}
+    assert ran and ran <= _AGENT_PROBE_IDS
 
-    # Passive findings are advisory: MEDIUM exposures -> grade B, not F.
+    # Passive findings are advisory (MEDIUM/LOW exposures) -> grade B, not F.
     assert scan.risk_grade() == "B"
 
 
 def test_engine_active_confirms_and_grades_down(mcp_target):
     scan = run_scan(mcp_target, select_probes(include_agent=True), active=True)
 
-    llm06 = {r.attack.metadata.get("tool"): r for r in scan.results
-             if r.category.code == "LLM06"}
-    assert llm06["delete_account"].verdict is Verdict.VULNERABLE
-    assert llm06["wire_transfer"].verdict is Verdict.PASS
+    # Filter by probe id, not category: excessive-agency and insecure-auth are
+    # both LLM06, so a category filter would conflate them.
+    ea = {r.attack.metadata.get("tool"): r for r in scan.results
+          if r.probe_id == "llm06-excessive-agency"}
+    assert ea["delete_account"].verdict is Verdict.VULNERABLE
+    assert ea["wire_transfer"].verdict is Verdict.PASS
 
     # A confirmed HIGH excessive-agency finding drives the grade down.
     assert scan.risk_grade() in {"C", "D", "F"}

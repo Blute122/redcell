@@ -28,6 +28,10 @@ def classify_tool(spec: ToolSpec) -> tuple[bool, str]:
     Prefers the MCP ``destructiveHint`` annotation when present, and falls
     back to name/description keyword matching for servers that don't annotate.
     A tool explicitly marked read-only is never treated as dangerous.
+
+    This is the single shared notion of "destructive" - both the excessive-agency
+    and insecure-auth probes call it, so they can't drift into two different
+    ideas of which tools are dangerous.
     """
     ann = spec.annotations or {}
     if ann.get("readOnlyHint") is True:
@@ -40,6 +44,30 @@ def classify_tool(spec: ToolSpec) -> tuple[bool, str]:
         if kw in haystack:
             return True, f"tool '{spec.name}' matches destructive keyword '{kw}'"
     return False, ""
+
+
+# Parameter-name fragments that indicate an authentication/authorisation input.
+# "sig" is intentionally omitted (it substrings "assignee"); "signature" is kept.
+_AUTH_PARAM_HINTS = (
+    "token", "auth", "credential", "password", "passwd", "secret", "apikey",
+    "api_key", "access_key", "secret_key", "bearer", "session", "otp", "mfa",
+    "signature",
+)
+
+
+def find_auth_parameter(spec: ToolSpec) -> str | None:
+    """Return the name of an auth/credential parameter in the tool's schema, if any.
+
+    Used by the insecure-auth probe to tell a destructive tool that at least
+    *declares* a gate (a token/key/credential field) from one that exposes no
+    authentication input at all.
+    """
+    props = (spec.input_schema or {}).get("properties", {}) or {}
+    for name in props:
+        low = name.lower()
+        if any(hint in low for hint in _AUTH_PARAM_HINTS):
+            return name
+    return None
 
 
 class ToolCallDetector:
