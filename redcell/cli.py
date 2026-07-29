@@ -21,7 +21,12 @@ from .engine import run_scan, select_probes
 from .models import Severity
 from .probes import all_probes
 from .report import print_console, to_json, to_markdown, to_sarif
-from .targets import MCPTarget, MockVulnerableTarget, OpenAICompatTarget
+from .targets import (
+    MCPHttpTarget,
+    MCPTarget,
+    MockVulnerableTarget,
+    OpenAICompatTarget,
+)
 
 app = typer.Typer(add_completion=False, help="RedCell - OWASP LLM Top 10 scanner.")
 console = Console()
@@ -29,6 +34,21 @@ console = Console()
 #: Report renderers by --format value. sarif emits SARIF 2.1.0 for GitHub
 #: code scanning; md/json are unchanged.
 _REPORTERS = {"md": to_markdown, "json": to_json, "sarif": to_sarif}
+
+
+def _parse_headers(raw: list[str] | None) -> dict[str, str]:
+    """Parse repeated 'Key: Value' header flags into a dict.
+
+    Values are credentials, so nothing here is logged; a malformed flag is a
+    usage error the caller turns into exit 2.
+    """
+    headers: dict[str, str] = {}
+    for item in raw or []:
+        key, sep, value = item.partition(":")
+        if not sep or not key.strip():
+            raise ValueError(f"invalid --mcp-header '{item}'; expected 'Key: Value'")
+        headers[key.strip()] = value.strip()
+    return headers
 
 
 def _safe_streams() -> None:
@@ -58,6 +78,16 @@ def scan(
     system_prompt: str = typer.Option(
         None, "--system-prompt",
         help="System prompt you control; a canary is planted for leak probes.",
+    ),
+    mcp_url: str = typer.Option(
+        None, "--mcp-url",
+        help="Scan a hosted MCP server over HTTP/SSE, e.g. --mcp-url https://host/mcp. "
+             "Mutually exclusive with --mcp-command.",
+    ),
+    mcp_header: list[str] = typer.Option(
+        None, "--mcp-header",
+        help="Auth header 'Key: Value' for --mcp-url (repeatable). Treated as a "
+             "credential: never logged or written to reports/SARIF.",
     ),
     mcp_command: str = typer.Option(
         None, "--mcp-command",
@@ -94,11 +124,23 @@ def scan(
             f"[red]Unknown --format '{fmt}'. Choose from: {', '.join(_REPORTERS)}.[/]"
         )
         raise typer.Exit(code=2)
+    if mcp_command and mcp_url:
+        console.print("[red]Give only one of --mcp-command or --mcp-url.[/]")
+        raise typer.Exit(code=2)
+
     if demo:
         target = MockVulnerableTarget()
     elif mcp_command:
         target = MCPTarget(command=shlex.split(mcp_command))
         # An MCP server is a tool target: the agent probes are the point.
+        include_agent = True
+    elif mcp_url:
+        try:
+            headers = _parse_headers(mcp_header)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(code=2)
+        target = MCPHttpTarget(url=mcp_url, headers=headers)
         include_agent = True
     elif target_url and model:
         target = OpenAICompatTarget(
@@ -107,7 +149,8 @@ def scan(
         )
     else:
         console.print(
-            "[red]Provide --demo, --mcp-command, or both --target-url and --model.[/]"
+            "[red]Provide --demo, --mcp-command, --mcp-url, or both "
+            "--target-url and --model.[/]"
         )
         raise typer.Exit(code=2)
 

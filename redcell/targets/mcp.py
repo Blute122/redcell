@@ -1,22 +1,18 @@
-"""MCP server target adapter.
+"""MCP server target adapter — stdio transport.
 
-Connects RedCell to a Model Context Protocol server and exposes it as an
-``AgentTarget`` so the agent-only probes (LLM06 excessive agency) can run
-against it live: enumerate the tools it advertises and actually invoke them.
-
-Transport is stdio - the canonical local MCP transport. RedCell launches the
-server as a subprocess and speaks newline-delimited JSON-RPC 2.0 over its
-stdin/stdout:
+Connects RedCell to a Model Context Protocol server over stdio (the canonical
+local transport) and exposes it as an ``AgentTarget`` so the agent probes can
+enumerate its tools and invoke them. RedCell launches the server as a
+subprocess and speaks newline-delimited JSON-RPC 2.0 over its stdin/stdout:
 
     initialize -> notifications/initialized -> tools/list -> tools/call
 
-This is a deliberately small, dependency-free client (stdlib + the wire
-protocol) rather than the full MCP SDK: the scanner only needs to list and
-call tools, and a lean client keeps the tests hermetic. HTTP/SSE transports
-can be added behind the same ``MCPTarget`` surface later.
+The MCP protocol semantics live in :mod:`mcp_protocol` (shared with the HTTP
+adapter); this module only implements the stdio framing. It stays a small,
+dependency-free client rather than the full MCP SDK.
 
-An MCP server is not a chat model, so ``chat_capable`` is False: the engine
-runs the tool probes against it and skips the prompt-only probes.
+An MCP server is not a chat model, so ``chat_capable`` is False: the engine runs
+the tool probes against it and skips the prompt-only probes.
 """
 
 from __future__ import annotations
@@ -28,21 +24,16 @@ from typing import Any
 
 from ..models import ToolCallResult, ToolSpec
 from .base import AgentTarget
+from .mcp_protocol import MCPError, MCPSession, MCPTransport
 
-_PROTOCOL_VERSION = "2024-11-05"
-_CLIENT_INFO = {"name": "redcell", "version": "0.1.0"}
-
-
-class MCPError(RuntimeError):
-    """Transport- or protocol-level failure talking to the MCP server."""
+__all__ = ["MCPTarget", "MCPError"]
 
 
-class _StdioMCPClient:
-    """Minimal JSON-RPC 2.0 client over a subprocess' stdio.
+class StdioTransport(MCPTransport):
+    """JSON-RPC 2.0 framing over a subprocess' stdio (newline-delimited).
 
-    Messages are newline-delimited JSON. Requests carry an id and block for
-    the matching response; server-initiated notifications (no id) and log
-    lines are skipped while waiting.
+    Requests carry an id and block for the matching response; server-initiated
+    notifications (no id) and stray log lines are skipped while waiting.
     """
 
     def __init__(
@@ -52,10 +43,7 @@ class _StdioMCPClient:
         cwd: str | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self.command = command
         self.timeout = timeout
-        self._id = 0
-        self._lock = threading.Lock()
         try:
             self._proc = subprocess.Popen(
                 command,
@@ -70,8 +58,6 @@ class _StdioMCPClient:
         except (OSError, ValueError) as exc:
             raise MCPError(f"failed to launch MCP server {command!r}: {exc}") from exc
 
-    # --- framing ------------------------------------------------------------
-
     def _write(self, message: dict[str, Any]) -> None:
         if self._proc.stdin is None or self._proc.poll() is not None:
             raise MCPError("MCP server process is not running")
@@ -85,8 +71,8 @@ class _StdioMCPClient:
     def _read_response(self, expected_id: int) -> dict[str, Any]:
         """Read lines until the response with `expected_id` arrives.
 
-        A background timer kills the subprocess if the server never answers,
-        so a hung server surfaces as an error instead of blocking the scan.
+        A background timer kills the subprocess if the server never answers, so
+        a hung server surfaces as an error instead of blocking the scan.
         """
         assert self._proc.stdout is not None
         timer = threading.Timer(self.timeout, self._proc.kill)
@@ -105,8 +91,7 @@ class _StdioMCPClient:
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
-                    # Not JSON-RPC (e.g. a stray log line) - ignore.
-                    continue
+                    continue  # not JSON-RPC (e.g. a stray log line)
                 if msg.get("id") == expected_id:
                     return msg
                 # Otherwise a notification or unrelated message; keep reading.
@@ -123,40 +108,14 @@ class _StdioMCPClient:
             pass
         return ""
 
-    # --- JSON-RPC -----------------------------------------------------------
+    def send_request(self, message: dict[str, Any]) -> dict[str, Any]:
+        """Write one request and read back its matching response."""
+        self._write(message)
+        return self._read_response(message["id"])
 
-    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Send a JSON-RPC request and return its result, raising on error."""
-        with self._lock:
-            self._id += 1
-            req_id = self._id
-            self._write(
-                {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}}
-            )
-            resp = self._read_response(req_id)
-        if "error" in resp:
-            err = resp["error"]
-            raise MCPError(f"{method} failed: {err.get('message', err)}")
-        return resp.get("result", {})
-
-    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
-        """Send a JSON-RPC notification (no id, no response expected)."""
-        with self._lock:
-            self._write({"jsonrpc": "2.0", "method": method, "params": params or {}})
-
-    # --- lifecycle ----------------------------------------------------------
-
-    def initialize(self) -> None:
-        """Perform the MCP handshake: initialize, then notify initialized."""
-        self.request(
-            "initialize",
-            {
-                "protocolVersion": _PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": _CLIENT_INFO,
-            },
-        )
-        self.notify("notifications/initialized")
+    def send_notification(self, message: dict[str, Any]) -> None:
+        """Write a notification; no response is read."""
+        self._write(message)
 
     def close(self) -> None:
         """Shut down the server subprocess, escalating to kill if needed."""
@@ -174,23 +133,8 @@ class _StdioMCPClient:
                 proc.kill()
 
 
-def _content_to_text(content: Any) -> str:
-    """Flatten an MCP tool-result `content` array into plain text."""
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                parts.append(item.get("text") or item.get("data") or json.dumps(item))
-            else:
-                parts.append(str(item))
-        return "\n".join(parts)
-    if content is None:
-        return ""
-    return str(content)
-
-
 class MCPTarget(AgentTarget):
-    """A Model Context Protocol server, exposed as a tool-callable target."""
+    """A Model Context Protocol server over stdio, as a tool-callable target."""
 
     #: MCP servers expose tools, not a chat interface.
     chat_capable = False
@@ -208,51 +152,16 @@ class MCPTarget(AgentTarget):
             raise ValueError("MCPTarget requires a non-empty launch command")
         self.command = command
         self.name = name or f"mcp:{command[0]}"
-        self._client = _StdioMCPClient(command, env=env, cwd=cwd, timeout=timeout)
-        self._initialized = False
-
-    def _ensure_ready(self) -> None:
-        if not self._initialized:
-            self._client.initialize()
-            self._initialized = True
+        transport = StdioTransport(command, env=env, cwd=cwd, timeout=timeout)
+        self._session = MCPSession(transport)
 
     def list_tools(self) -> list[ToolSpec]:
         """Enumerate the tools the MCP server advertises."""
-        self._ensure_ready()
-        result = self._client.request("tools/list")
-        tools = []
-        for raw in result.get("tools", []):
-            tools.append(
-                ToolSpec(
-                    name=raw.get("name", ""),
-                    description=raw.get("description", "") or "",
-                    input_schema=raw.get("inputSchema", {}) or {},
-                    annotations=raw.get("annotations", {}) or {},
-                )
-            )
-        return tools
+        return self._session.list_tools()
 
     def call_tool(self, name: str, arguments: dict) -> ToolCallResult:
         """Invoke a tool and report whether it actually executed."""
-        self._ensure_ready()
-        try:
-            result = self._client.request(
-                "tools/call", {"name": name, "arguments": arguments}
-            )
-        except MCPError as exc:
-            # A JSON-RPC error means the server rejected the call outright -
-            # the good outcome for an unauthorised destructive request.
-            return ToolCallResult(tool=name, ok=False, is_error=True, output=str(exc))
-
-        is_error = bool(result.get("isError", False))
-        text = _content_to_text(result.get("content"))
-        return ToolCallResult(
-            tool=name,
-            ok=not is_error,
-            output=text,
-            is_error=is_error,
-            raw=result,
-        )
+        return self._session.call_tool(name, arguments)
 
     def send(self, prompt: str) -> str:  # pragma: no cover - not chat-capable
         """Not supported: an MCP server exposes tools, not a chat endpoint."""
@@ -262,4 +171,4 @@ class MCPTarget(AgentTarget):
 
     def close(self) -> None:
         """Terminate the underlying MCP server process."""
-        self._client.close()
+        self._session.close()

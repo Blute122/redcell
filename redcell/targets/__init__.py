@@ -2,6 +2,7 @@
 
 from .base import AgentTarget, Target
 from .mcp import MCPTarget
+from .mcp_http import MCPHttpTarget
 from .mock import HardenedMockTarget, MockVulnerableTarget
 from .openai_compat import OpenAICompatTarget
 
@@ -12,4 +13,5 @@ __all__ = [
     "HardenedMockTarget",
     "OpenAICompatTarget",
     "MCPTarget",
+    "MCPHttpTarget",
 ]
