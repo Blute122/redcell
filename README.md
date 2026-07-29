@@ -94,26 +94,41 @@ redcell scan --demo --fail-on high -o report.json -f json
 
 ## Scanning an MCP server (the headline feature)
 
-RedCell speaks the Model Context Protocol over stdio. Point it at any MCP
-server and the LLM06 excessive-agency probe runs against its tools —
-enumerating them and flagging the destructive/privileged ones. It works in two
-tiers, mirroring how DAST tools separate safe crawling from active
-exploitation:
+RedCell covers the **MCP attack surface across four angles** — this agent-side
+breadth is what distinguishes it from prompt-layer scanners:
 
-**Passive (default) — always safe to run.** Flags every dangerous tool from
-its MCP annotations (`destructiveHint`) and its name/signature, *without ever
-invoking it*. Findings are advisory (MEDIUM): they prove the capability is
-exposed, not that it's exploitable.
+| Angle | What it checks | OWASP |
+|-------|----------------|-------|
+| **Excessive agency** | Will a destructive tool actually execute when called ungated? | LLM06 |
+| **Tool poisoning** | Does a tool's *description/metadata* embed instructions, hidden characters, or exfiltration directives aimed at the model? | LLM01 |
+| **Insecure auth** | Does the server expose destructive tools with no authentication/gating at all? | LLM06 |
+| **Injection sequences** | Does a benign read chain into an exfiltration where the *sequence*, not either call, is the finding? *(detection logic; see roadmap)* | LLM01 |
+
+Point RedCell at an MCP server over stdio **or HTTP/SSE**:
 
 ```bash
-redcell scan --mcp-command "python my_mcp_server.py"
+redcell scan --mcp-command "python my_mcp_server.py"          # local, stdio
+redcell scan --mcp-url https://host/mcp                        # hosted, HTTP/SSE
+redcell scan --mcp-url https://host/mcp --mcp-header "Authorization: Bearer $TOKEN"
 ```
 
-**Active (`--active`) — authorised, disposable targets only.** Actually
-attempts the unauthorised call to confirm exploitability. A call that
-**succeeds when it should have been gated** is a confirmed finding (HIGH); a
-refusal flips to PASS. Calls use recognisable `redcell-probe` sentinel
-arguments.
+> 🔒 **Credentials.** `--mcp-header` values are treated as secrets: they are sent
+> only to the server and are **never logged, never placed in the target name,
+> and never written to reports or SARIF**.
+
+**The destructive checks work in two tiers**, mirroring how DAST tools separate
+safe crawling from active exploitation:
+
+**Passive (default) — always safe to run.** Enumerates tools and flags the
+dangerous ones from their MCP annotations (`destructiveHint`) and name/signature,
+*without ever invoking them*. Excessive-agency and insecure-auth findings are
+advisory (MEDIUM/LOW); tool-poisoning is a pure metadata read with no active
+variant.
+
+**Active (`--active`) — authorised, disposable targets only.** Attempts the
+unauthorised call to confirm exploitability. A call that **succeeds when it
+should have been gated** is a confirmed finding (HIGH); a refusal flips to PASS.
+Calls use recognisable `redcell-probe` sentinel arguments.
 
 ```bash
 redcell scan --mcp-command "python my_mcp_server.py" --active
@@ -169,6 +184,14 @@ Repeats separate two kinds of result: LLM01, LLM02, LLM07 moved between runs —
 **Passive vs. active (LLM06).** In passive mode RedCell flags 2 destructive tools on the *hardened* MCP server as advisory MEDIUM exposures; `--active` invokes them, both are refused, and they clear to PASS (0 confirmed) — the detection-confidence vs. operational-safety trade-off, made measurable.
 <!-- RESULTS_TABLE:END -->
 
+The table above measures the **chat-layer** detectors (and one MCP tool) with a
+dated live-model reference. The four **MCP-breadth** checks — excessive agency,
+tool poisoning, insecure auth, and injection-sequence detection — are validated
+by the hermetic test suite (a poisoned + hardened mock MCP server over both stdio
+and HTTP/SSE): each probe flags its planted positive and spares a
+precision/clean case, including the boundary cases where a heuristic would
+false-positive.
+
 ### GitHub code scanning (SARIF)
 
 RedCell emits **SARIF 2.1.0** (`redcell scan … --format sarif`), so its findings
@@ -188,9 +211,11 @@ uploads the SARIF on every push to `main`.
 |-------|-------|--------------|
 | LLM01 | Direct prompt injection | Instruction-override, delimiter breaks, translation smuggling, payload splitting |
 | LLM01 | Indirect / cross-context injection | Hides instructions in "retrieved" documents; scores *obeying* (an out-of-band action), not quoting |
+| LLM01 | Tool poisoning *(agent/MCP)* | Inspects tool metadata for model-directed instructions, hidden characters, and exfiltration directives |
 | LLM02 | Sensitive info disclosure | Tries to extract planted secrets / credentials |
 | LLM05 | Improper output handling | Coaxes raw XSS/SQLi-shaped markup out of the model |
 | LLM06 | Excessive agency *(agent/MCP)* | Enumerates and (opt-in) invokes destructive tools |
+| LLM06 | Insecure auth *(agent/MCP)* | Flags destructive tools exposed with no authentication/gating |
 | LLM07 | System prompt leakage | Tries to make the model recite its hidden instructions |
 | LLM09 | Misinformation | Seed check for confident falsehoods |
 
@@ -204,7 +229,8 @@ Four extension points, each independent:
 
 - **Targets** (`redcell/targets/`) — anything you can send a prompt to, plus
   tool-callers via `AgentTarget`. `OpenAICompatTarget`, `MockVulnerableTarget`,
-  and `MCPTarget` (connects to an MCP server over stdio) ship today.
+  and MCP adapters over both stdio (`MCPTarget`) and HTTP/SSE (`MCPHttpTarget`),
+  sharing one protocol layer.
 - **Probes** (`redcell/probes/`) — a category + severity + a set of attacks.
   Adding one is: subclass `Probe`, list attacks, pick a detector, `@register`.
 - **Detectors** (`redcell/detectors/`) — decide if an attack worked. Precise
@@ -242,8 +268,11 @@ class MyProbe(Probe):
 - [x] **Agent target adapter** — LLM06 fires live against MCP tool-callers.
 - [x] **Indirect / cross-context injection** — payloads via retrieved content,
       scored by out-of-band action so quoting isn't mistaken for obeying.
-- [ ] **MCP server scanning (breadth)** — tool poisoning, insecure auth,
-      injection-driven tool *sequences*; HTTP/SSE transport.
+- [x] **MCP server scanning (breadth)** — HTTP/SSE transport, tool poisoning,
+      insecure auth, and injection-sequence *detection*.
+  - [ ] Injection-driven sequences: **drive a live multi-step agent** to
+        generate traces (detection logic shipped; live-agent driving exceeds the
+        current `list_tools`/`call_tool` target contract).
 - [x] **CI gate** — `--fail-on <severity>` blocks a pipeline on findings.
 - [x] **SARIF output** — `--format sarif` for native GitHub code scanning.
 - [ ] Expanded payload corpora per category; MITRE ATLAS mapping alongside OWASP.

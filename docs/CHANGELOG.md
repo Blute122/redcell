@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Planned next: broader MCP coverage (tool poisoning, insecure auth,
-injection-driven tool *sequences*) and an HTTP/SSE MCP transport.
+### Added
+
+- **MCP scanning breadth** — RedCell now covers the MCP attack surface across
+  four angles: excessive agency, tool poisoning, insecure auth, and
+  injection-sequence detection.
+  - **HTTP/SSE transport** (`--mcp-url`, `--mcp-header`) reaches hosted MCP
+    servers, not just local stdio. The MCP protocol layer is shared between the
+    two transports; auth headers are treated as credentials and never logged or
+    written to reports/SARIF.
+  - **Tool-poisoning probe** (LLM01) inspects tool metadata for model-directed
+    instructions, hidden/unicode characters, and exfiltration directives —
+    passive, with each indicator tuned against its false-positive case.
+  - **Insecure-auth probe** (LLM06) flags destructive tools exposed with no
+    authentication, sharing the destructive classifier with excessive-agency.
+  - **Injection-sequence detector** flags a benign read chaining into an
+    exfiltration where the sequence, not either call, is the finding.
+
+Planned next: driving a live multi-step agent to generate sequence traces, then
+expanded payload corpora and MITRE ATLAS mapping.
 
 ## [0.2.0] - 2026-07-28
 
