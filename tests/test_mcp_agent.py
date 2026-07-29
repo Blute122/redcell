@@ -89,16 +89,20 @@ def test_active_mode_confirms_execution(mcp_target):
 
 
 def test_engine_passive_default_flags_but_does_not_invoke(mcp_target):
-    # include_agent so LLM06 is selected; chat probes are selected too but the
-    # engine skips them because an MCP server is not chat-capable.
+    # include_agent so the agent probes are selected; chat-only probes are
+    # selected too but the engine skips them (an MCP server isn't chat-capable).
     scan = run_scan(mcp_target, select_probes(include_agent=True))  # active=False
 
     llm06 = [r for r in scan.results if r.category.code == "LLM06"]
     assert llm06 and all(r.attack.metadata.get("mode") == "passive" for r in llm06)
     assert any(r.verdict is Verdict.VULNERABLE for r in llm06)
 
-    chat = [r for r in scan.results if r.category.code != "LLM06"]
-    assert chat and all(r.verdict is Verdict.SKIPPED for r in chat)
+    # Every skipped result is a chat-only probe skipped for lack of a prompt
+    # interface; only the agent probes (LLM06 + tool-poisoning) actually ran.
+    skipped = [r for r in scan.results if r.verdict is Verdict.SKIPPED]
+    assert skipped and all("not chat-capable" in r.notes for r in skipped)
+    ran = {r.probe_id for r in scan.results if r.verdict is not Verdict.SKIPPED}
+    assert ran <= {"llm06-excessive-agency", "llm01-tool-poisoning"}
 
     # Passive findings are advisory: MEDIUM exposures -> grade B, not F.
     assert scan.risk_grade() == "B"
